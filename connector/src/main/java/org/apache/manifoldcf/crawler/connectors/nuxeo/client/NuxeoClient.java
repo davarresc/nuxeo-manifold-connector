@@ -3,10 +3,308 @@
  */
 package org.apache.manifoldcf.crawler.connectors.nuxeo.client;
 
+import java.io.IOException;
+import java.nio.charset.Charset;
+
+import javax.net.ssl.SSLSocketFactory;
+
+import org.apache.commons.codec.binary.Base64;
+import org.apache.http.HttpEntity;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.config.RequestConfig;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpUriRequest;
+import org.apache.http.client.protocol.HttpClientContext;
+import org.apache.http.config.RegistryBuilder;
+import org.apache.http.config.SocketConfig;
+import org.apache.http.conn.socket.ConnectionSocketFactory;
+import org.apache.http.conn.socket.PlainConnectionSocketFactory;
+import org.apache.http.conn.ssl.NoopHostnameVerifier;
+import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.DefaultRedirectStrategy;
+import org.apache.http.impl.client.HttpClients;
+import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
+import org.apache.http.protocol.HttpRequestExecutor;
+import org.apache.http.util.EntityUtils;
+import org.apache.manifoldcf.connectorcommon.common.InterruptibleSocketFactory;
+import org.apache.manifoldcf.connectorcommon.interfaces.KeystoreManagerFactory;
+import org.apache.manifoldcf.core.interfaces.ManifoldCFException;
+import org.apache.manifoldcf.core.util.URLEncoder;
+import org.apache.manifoldcf.crawler.connectors.nuxeo.model.Document;
+import org.apache.manifoldcf.crawler.connectors.nuxeo.model.MutableDocument;
+import org.apache.manifoldcf.crawler.connectors.nuxeo.model.NuxeoResource;
+import org.apache.manifoldcf.crawler.connectors.nuxeo.model.NuxeoResponse;
+import org.apache.manifoldcf.crawler.connectors.nuxeo.model.builder.NuxeoResourceBuilder;
+import org.json.JSONException;
+import org.json.JSONObject;
+
 /**
  * @author David Arroyo Escobar <arroyoescobardavid@gmail.com>
  *
  */
 public class NuxeoClient {
+	private static final String CONTENT_PATH = "site/api/v1/";
+	private static final String CONTENT_QUERY = CONTENT_PATH + "query";
+	private static final String CONTENT_UUID = CONTENT_PATH + "id";
+
+//	private Logger logger = LoggerFactory.getLogger(NuxeoClient.class);
+
+	private String protocol;
+	private Integer port;
+	private String host;
+	private String path;
+	private String username;
+	private String password;
+
+	private CloseableHttpClient httpClient;
+	private HttpClientContext httpContext;
+
+	public NuxeoClient(String protocol, String host, Integer port, String path, String username, String password)
+			throws ManifoldCFException {
+
+		this.protocol = protocol;
+		this.host = host;
+		this.port = port;
+		this.path = path;
+		this.username = username;
+		this.password = password;
+
+		connect();
+	}
+
+	private void connect() throws ManifoldCFException {
+		int socketTimeout = 900000;
+		int connectionTimeout = 60000;
+		int inactivityTimeout = 2000;
+
+		SSLSocketFactory httpsSocketFactory = KeystoreManagerFactory.getTrustingSecureSocketFactory();
+		SSLConnectionSocketFactory sslConnectionSocketFactory = new SSLConnectionSocketFactory(
+				new InterruptibleSocketFactory(httpsSocketFactory, connectionTimeout), NoopHostnameVerifier.INSTANCE);
+
+		PoolingHttpClientConnectionManager poolingHttpClientConnectionManager = new PoolingHttpClientConnectionManager(
+				RegistryBuilder.<ConnectionSocketFactory> create()
+						.register("http", PlainConnectionSocketFactory.getSocketFactory())
+						.register("https", sslConnectionSocketFactory).build());
+
+		poolingHttpClientConnectionManager.setDefaultMaxPerRoute(1);
+		poolingHttpClientConnectionManager.setValidateAfterInactivity(inactivityTimeout);
+		poolingHttpClientConnectionManager
+				.setDefaultSocketConfig(SocketConfig.custom().setTcpNoDelay(true).setSoTimeout(socketTimeout).build());
+
+		RequestConfig.Builder requestBuilder = RequestConfig.custom().setCircularRedirectsAllowed(true)
+				.setSocketTimeout(socketTimeout).setExpectContinueEnabled(true).setConnectTimeout(connectionTimeout)
+				.setConnectionRequestTimeout(socketTimeout);
+
+		httpClient = HttpClients.custom().setConnectionManager(poolingHttpClientConnectionManager)
+				.disableAutomaticRetries().setDefaultRequestConfig(requestBuilder.build())
+				.setRequestExecutor(new HttpRequestExecutor(socketTimeout))
+				.setRedirectStrategy(new DefaultRedirectStrategy()).build();
+	}
+
+	public Boolean check() throws Exception {
+		HttpResponse response;
+
+		try {
+			if (httpClient == null)
+				connect();
+
+			String url = String.format("%s://%s:%s/%s/%s?pageSize=1", protocol, host, port, path, CONTENT_QUERY);
+
+			HttpGet httpGet = createGetRequest(url);
+			response = httpClient.execute(httpGet);
+			int statusCode = response.getStatusLine().getStatusCode();
+			if (statusCode != 200)
+				throw new Exception("[Checking connection] Nuxeo server appears to be down");
+			else
+				return true;
+		} catch (IOException e) {
+			throw new Exception("Nuxeo apeears to be down", e);
+		}
+	}
+
+	/**
+	 * @param url
+	 * @return
+	 */
+	private HttpGet createGetRequest(String url) {
+		String sanitizedUrl = sanitizedUrl(url);
+
+		HttpGet httpGet = new HttpGet(sanitizedUrl);
+
+		httpGet.addHeader("accepted", "application/json");
+		if (useBasicAuthentication())
+			httpGet.addHeader("Authorization", "Basic " + Base64.encodeBase64String(
+					String.format("%s:%s", this.username, this.password).getBytes(Charset.forName("UTF-8"))));
+		return httpGet;
+	}
+
+	/**
+	 * @param url
+	 * @return
+	 */
+	private String sanitizedUrl(String url) {
+		int colonIndex = url.indexOf(":");
+
+		String urlWithoutProtocol = url.startsWith("http") ? url.substring(colonIndex + 3) : url;
+		String sanitizedUrl = urlWithoutProtocol.replace("\\/+", "/");
+		return url.substring(0, colonIndex) + "://" + sanitizedUrl;
+	}
+
+	/**
+	 * @return
+	 */
+	private boolean useBasicAuthentication() {
+		return this.username != null && !"".equals(this.username) && this.password != null;
+	}
+
+	/**
+	 * @param lastStart
+	 * @param defaultSize
+	 * @param object
+	 * @return
+	 */
+	@SuppressWarnings("unchecked")
+	public NuxeoResponse<Document> getDocuments(String lastSeedVersion, int start, int limit, Object object)
+			throws Exception {
+
+		String url = null;
+
+		if (lastSeedVersion == null || lastSeedVersion.isEmpty()) {
+			url = String.format("%s://%s:%s/%s/%s?pageSize=%s&currentPageIndex=%s", protocol, host, port, path,
+					CONTENT_QUERY, limit, start);
+		} else {
+			String query = URLEncoder.encode("SELECT * FROM Document WHERE dc:modified > ?");
+
+			url = String.format("%s://%s:%s/%s/%s?query=%s&pageSize=%s&currentPageIndex=%s&queryParams=%s", protocol,
+					host, port, path, CONTENT_QUERY, query, limit, start, lastSeedVersion);
+		}
+
+		return (NuxeoResponse<Document>) getNuxeoResource(url, Document.builder());
+	}
+
+	/**
+	 * @param url
+	 * @param builder
+	 * @return
+	 */
+	private NuxeoResponse<? extends NuxeoResource> getNuxeoResource(String url,
+			NuxeoResourceBuilder<? extends Document> builder) throws Exception {
+
+		try {
+			HttpGet httpGet = createGetRequest(url);
+			httpGet.addHeader("X-NXDocumentProperties", "*");
+			HttpResponse response = executeRequest(httpGet);
+
+			NuxeoResponse<? extends NuxeoResource> nuxeoResponse = responseFromHttpEntity(response.getEntity(),
+					builder);
+			EntityUtils.consume(response.getEntity());
+			return nuxeoResponse;
+		} catch (IOException e) {
+			throw new Exception("Nuxeo appears to be down", e);
+		}
+	}
+
+	/**
+	 * @param entity
+	 * @param builder
+	 * @return
+	 */
+	private <T extends NuxeoResource> NuxeoResponse<T> responseFromHttpEntity(HttpEntity entity,
+			NuxeoResourceBuilder<T> builder) throws Exception {
+
+		String stringEntity = EntityUtils.toString(entity);
+
+		JSONObject responseObject;
+
+		try {
+			responseObject = new JSONObject(stringEntity);
+			NuxeoResponse<T> response = NuxeoResponse.fromJson(responseObject, builder);
+
+			return response;
+		} catch (JSONException e) {
+			throw new Exception();
+		}
+	}
+
+	/**
+	 * @param httpGet
+	 * @return
+	 */
+	private HttpResponse executeRequest(HttpUriRequest request) throws Exception {
+
+		HttpResponse response = httpClient.execute(request, httpContext);
+
+		if (response.getStatusLine().getStatusCode() != 200) {
+			throw new Exception("Nuxeo error. " + response.getStatusLine().getStatusCode() + " "
+					+ response.getStatusLine().getReasonPhrase());
+		}
+		return response;
+	}
+
+	/**
+	 * @param documentId
+	 * @return
+	 */
+	public Document getDocument(String documentId) {
+
+		String url = getPathDocument(documentId);
+
+		url = sanitizedUrl(url);
+
+		try {
+
+			HttpGet httpGet = createGetRequest(url);
+			HttpResponse response = executeRequest(httpGet);
+			HttpEntity entity = response.getEntity();
+			MutableDocument mDocument = documentFromHttpEmpty(entity);
+			EntityUtils.consume(entity);
+
+			return mDocument;
+		} catch (Exception e) {
+		}
+
+		return new Document();
+	}
+
+	public String getPathDocument(String documentId) {
+		return String.format("%s://%s:%s/%s/%s/%s", protocol, host, port, path, CONTENT_UUID, documentId);
+	}
+
+	/**
+	 * @param entity
+	 * @return
+	 */
+	private MutableDocument documentFromHttpEmpty(HttpEntity entity) throws Exception {
+		String stringEntity = EntityUtils.toString(entity);
+
+		JSONObject responseObject;
+
+		try {
+			responseObject = new JSONObject(stringEntity);
+
+			@SuppressWarnings("unchecked")
+			MutableDocument mDocument = ((NuxeoResourceBuilder<MutableDocument>) MutableDocument.builder())
+					.fromJson(responseObject, new MutableDocument());
+
+			return mDocument;
+		} catch (JSONException jsonException) {
+			throw new Exception("Error parsing JSON document response data");
+		}
+	}
+
+	/**
+	 * 
+	 */
+	public void close() {
+		if (httpClient != null) {
+			try {
+				httpClient.close();
+			} catch (IOException ioException) {
+				ioException.printStackTrace();
+			}
+		}
+
+	}
 
 }
