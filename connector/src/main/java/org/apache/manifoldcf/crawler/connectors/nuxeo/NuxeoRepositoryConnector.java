@@ -37,7 +37,8 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 	protected final static String ACTIVITY_READ = "read document";
 
 	/** Deny access token for default authority */
-//	private final static String defaultAuthorityDenyToken = GLOBAL_DENY_TOKEN;
+	// private final static String defaultAuthorityDenyToken =
+	// GLOBAL_DENY_TOKEN;
 
 	// Configuration tabs
 	private static final String NUXEO_SERVER_TAB_PROPERTY = "NuxeoRepositoryConnector.Server";
@@ -66,7 +67,8 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 	protected long lastSessionFetch = -1L;
 	protected static final long timeToRelease = 300000L;
 
-//	private Logger logger = LoggerFactory.getLogger(NuxeoRepositoryConnector.class);
+	// private Logger logger =
+	// LoggerFactory.getLogger(NuxeoRepositoryConnector.class);
 
 	/* Nuxeo instance parameters */
 	protected String protocol = null;
@@ -466,8 +468,13 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 		if (lastModified != null)
 			lastVersion = df.format(lastModified);
 
+		if (doc.getState() != null && doc.getState().equalsIgnoreCase(Document.DELETED)) {
+			activities.deleteDocument(manifoldDocumentIdentifier);
+			return new ProcessResult(doc.getLenght(), "DELETED", "");
+		}
+
 		if (!activities.checkDocumentNeedsReindexing(manifoldDocumentIdentifier, lastVersion)) {
-			return new ProcessResult(doc.getLenght(), "RETAINED", ""); // TODO size
+			return new ProcessResult(doc.getLenght(), "RETAINED", "");
 		}
 
 		// Add respository document information
@@ -489,19 +496,15 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 
 		}
 
-		String documentUri = nuxeoClient.getPathDocument(doc.getUid()); 
-		
+		String documentUri = nuxeoClient.getPathDocument(doc.getUid());
+
 		// Set repository ACLs
 		// TODO ACLs
 
 		rd.setBinary(doc.getContentStream(), doc.getLenght());
 
 		// Action
-		if (doc.getState() != null && doc.getState().equalsIgnoreCase(Document.DELETED)) {
-			activities.removeDocument(manifoldDocumentIdentifier);
-		} else {
-			activities.ingestDocumentWithException(manifoldDocumentIdentifier, lastVersion, documentUri, rd);
-		}
+		activities.ingestDocumentWithException(manifoldDocumentIdentifier, lastVersion, documentUri, rd);
 
 		return new ProcessResult(doc.getLenght(), null, null);
 	}
