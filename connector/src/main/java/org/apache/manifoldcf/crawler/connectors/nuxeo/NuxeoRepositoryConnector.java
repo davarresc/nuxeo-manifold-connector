@@ -3,6 +3,7 @@ package org.apache.manifoldcf.crawler.connectors.nuxeo;
 import java.io.IOException;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -23,6 +24,8 @@ import org.apache.manifoldcf.core.interfaces.ManifoldCFException;
 import org.apache.manifoldcf.core.interfaces.Specification;
 import org.apache.manifoldcf.crawler.connectors.BaseRepositoryConnector;
 import org.apache.manifoldcf.crawler.connectors.nuxeo.client.NuxeoClient;
+import org.apache.manifoldcf.crawler.connectors.nuxeo.model.Ace;
+import org.apache.manifoldcf.crawler.connectors.nuxeo.model.Acl;
 import org.apache.manifoldcf.crawler.connectors.nuxeo.model.Document;
 import org.apache.manifoldcf.crawler.connectors.nuxeo.model.NuxeoResponse;
 import org.apache.manifoldcf.crawler.interfaces.IExistingVersions;
@@ -320,7 +323,6 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 	}
 
 	/** SEEDING **/
-
 	@Override
 	public String addSeedDocuments(ISeedingActivity activities, Specification spec, String lastSeedVersion,
 			long seedTime, int jobMode) throws ManifoldCFException, ServiceInterruption {
@@ -499,14 +501,33 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 		String documentUri = nuxeoClient.getPathDocument(doc.getUid());
 
 		// Set repository ACLs
-		// TODO ACLs
-
+		rd.setSecurityACL(RepositoryDocument.SECURITY_TYPE_DOCUMENT, getPermissionDocument(doc));
+		rd.setSecurityDenyACL(RepositoryDocument.SECURITY_TYPE_DOCUMENT, new String[] { GLOBAL_DENY_TOKEN });
 		rd.setBinary(doc.getContentStream(), doc.getLenght());
 
 		// Action
 		activities.ingestDocumentWithException(manifoldDocumentIdentifier, lastVersion, documentUri, rd);
 
 		return new ProcessResult(doc.getLenght(), null, null);
+	}
+
+	public String[] getPermissionDocument(Document doc) {
+
+		List<String> permissions = new ArrayList<String>();
+		try {
+			Acl acl = nuxeoClient.getAcl(doc.getUid());
+
+			for (Ace ace : acl.getAces()) {
+				if (ace.getStatus().equalsIgnoreCase("effective") && ace.isGranted()) {
+					permissions.add(ace.getName());
+				}
+			}
+
+			return permissions.toArray(new String[0]);
+
+		} catch (Exception e) {
+			return new String[] {};
+		}
 	}
 
 	public String processSpecificationPost(IPostParameters variableContext, Locale locale, Specification ds,
