@@ -5,6 +5,8 @@ package org.apache.manifoldcf.crawler.connectors.nuxeo.client;
 
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.util.ArrayList;
+import java.util.List;
 
 import javax.net.ssl.SSLSocketFactory;
 
@@ -31,11 +33,14 @@ import org.apache.manifoldcf.connectorcommon.common.InterruptibleSocketFactory;
 import org.apache.manifoldcf.connectorcommon.interfaces.KeystoreManagerFactory;
 import org.apache.manifoldcf.core.interfaces.ManifoldCFException;
 import org.apache.manifoldcf.core.util.URLEncoder;
+import org.apache.manifoldcf.crawler.connectors.nuxeo.model.Acl;
 import org.apache.manifoldcf.crawler.connectors.nuxeo.model.Document;
+import org.apache.manifoldcf.crawler.connectors.nuxeo.model.MutableAcl;
 import org.apache.manifoldcf.crawler.connectors.nuxeo.model.MutableDocument;
 import org.apache.manifoldcf.crawler.connectors.nuxeo.model.NuxeoResource;
 import org.apache.manifoldcf.crawler.connectors.nuxeo.model.NuxeoResponse;
 import org.apache.manifoldcf.crawler.connectors.nuxeo.model.builder.NuxeoResourceBuilder;
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -47,8 +52,9 @@ public class NuxeoClient {
 	private static final String CONTENT_PATH = "site/api/v1/";
 	private static final String CONTENT_QUERY = CONTENT_PATH + "query";
 	private static final String CONTENT_UUID = CONTENT_PATH + "id";
+	public static final String CONTENT_AUTHORITY = CONTENT_PATH + "user";
 
-//	private Logger logger = LoggerFactory.getLogger(NuxeoClient.class);
+	// private Logger logger = LoggerFactory.getLogger(NuxeoClient.class);
 
 	private String protocol;
 	private Integer port;
@@ -123,6 +129,21 @@ public class NuxeoClient {
 		}
 	}
 
+	public boolean checkAuth() throws Exception {
+		// HttpResponse response;
+
+		// try {
+		if (httpClient == null)
+			connect();
+
+		try {
+			getUserAuthorities("Administrator");
+			return true;
+		} catch (IOException e) {
+			throw new Exception("Nuxeo apeears to be down", e);
+		}
+	}
+
 	/**
 	 * @param url
 	 * @return
@@ -133,9 +154,11 @@ public class NuxeoClient {
 		HttpGet httpGet = new HttpGet(sanitizedUrl);
 
 		httpGet.addHeader("accepted", "application/json");
+		
 		if (useBasicAuthentication())
 			httpGet.addHeader("Authorization", "Basic " + Base64.encodeBase64String(
 					String.format("%s:%s", this.username, this.password).getBytes(Charset.forName("UTF-8"))));
+
 		return httpGet;
 	}
 
@@ -193,7 +216,6 @@ public class NuxeoClient {
 
 		try {
 			HttpGet httpGet = createGetRequest(url);
-			httpGet.addHeader("X-NXDocumentProperties", "*");
 			HttpResponse response = executeRequest(httpGet);
 
 			NuxeoResponse<? extends NuxeoResource> nuxeoResponse = responseFromHttpEntity(response.getEntity(),
@@ -255,6 +277,7 @@ public class NuxeoClient {
 		try {
 
 			HttpGet httpGet = createGetRequest(url);
+			httpGet.addHeader("X-NXDocumentProperties", "*");
 			HttpResponse response = executeRequest(httpGet);
 			HttpEntity entity = response.getEntity();
 			MutableDocument mDocument = documentFromHttpEmpty(entity);
@@ -265,6 +288,28 @@ public class NuxeoClient {
 		}
 
 		return new Document();
+	}
+
+	public Acl getAcl(String documentId) {
+
+		String url = getPathDocument(documentId);
+		url += "/@acl";
+
+		url = sanitizedUrl(url);
+
+		try {
+
+			HttpGet httpGet = createGetRequest(url);
+			HttpResponse response = executeRequest(httpGet);
+			HttpEntity entity = response.getEntity();
+			MutableAcl mAcl = aclFromHttpEmpty(entity);
+			EntityUtils.consume(entity);
+
+			return mAcl;
+		} catch (Exception e) {
+		}
+
+		return new Acl();
 	}
 
 	public String getPathDocument(String documentId) {
@@ -293,9 +338,24 @@ public class NuxeoClient {
 		}
 	}
 
-	/**
-	 * 
-	 */
+	private MutableAcl aclFromHttpEmpty(HttpEntity entity) throws Exception {
+		String stringEntity = EntityUtils.toString(entity);
+
+		JSONObject responseObject;
+
+		try {
+			responseObject = new JSONObject(stringEntity);
+
+			@SuppressWarnings("unchecked")
+			MutableAcl mAcl = ((NuxeoResourceBuilder<MutableAcl>) MutableAcl.builder()).fromJson(responseObject,
+					new MutableAcl());
+
+			return mAcl;
+		} catch (JSONException jsonException) {
+			throw new Exception("Error parsing JSON document response data");
+		}
+	}
+
 	public void close() {
 		if (httpClient != null) {
 			try {
@@ -305,6 +365,35 @@ public class NuxeoClient {
 			}
 		}
 
+	}
+
+	public List<String> getUserAuthorities(String username) throws Exception {
+		List<String> authorities = new ArrayList<String>();
+
+		String url = String.format("%s://%s:%s/%s/%s/%s", protocol, host, port, path, CONTENT_AUTHORITY, username);
+
+		url = sanitizedUrl(url);
+
+		HttpGet httpGet = createGetRequest(url);
+		HttpResponse response = executeRequest(httpGet);
+		HttpEntity entity = response.getEntity();
+		String stringEntity = EntityUtils.toString(entity);
+		EntityUtils.consume(entity);
+
+		JSONObject user = new JSONObject(stringEntity);
+		authorities.add(user.getString("id"));
+
+		JSONObject properties = user.optJSONObject("properties");
+
+		if (properties != null) {
+			JSONArray groups = properties.optJSONArray("groups");
+
+			for (int i = 0; i < groups.length(); i++) {
+				authorities.add(groups.getString(i));
+			}
+		}
+
+		return authorities;
 	}
 
 }

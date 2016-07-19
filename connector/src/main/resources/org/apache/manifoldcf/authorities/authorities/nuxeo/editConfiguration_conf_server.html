@@ -1,5 +1,5 @@
  #if($TABNAME ==
-$ResourceBundle.getString('NuxeoRepositoryConnector.Server'))
+$ResourceBundle.getString('NuxeoAuthorityConnector.Server'))
 
 <table class="displaytable">
 	<tr>
@@ -7,7 +7,7 @@ $ResourceBundle.getString('NuxeoRepositoryConnector.Server'))
 	</tr>
 
 	<tr>
-		<td class="description"><nobr>$Encoder.bodyEscape($ResourceBundle.getString('NuxeoRepositoryConnector.Protocol'))</nobr>
+		<td class="description"><nobr>$Encoder.bodyEscape($ResourceBundle.getString('NuxeoAuthorityConnector.Protocol'))</nobr>
 		</td>
 		<td class="value">
 			<select size="2" name="nuxeo_protocol" />
@@ -23,21 +23,21 @@ $ResourceBundle.getString('NuxeoRepositoryConnector.Server'))
 	</tr>
 
 	<tr>
-		<td class="description"><nobr>$Encoder.bodyEscape($ResourceBundle.getString('NuxeoRepositoryConnector.Host'))</nobr>
+		<td class="description"><nobr>$Encoder.bodyEscape($ResourceBundle.getString('NuxeoAuthorityConnector.Host'))</nobr>
 		</td>
 		<td class="value"><input size="32" type="text" id="nuxeo_host"
 			name="nuxeo_host" value="$Encoder.attributeEscape($NUXEO_HOST)" /></td>
 	</tr>
 
 	<tr>
-		<td class="description"><nobr>$Encoder.bodyEscape($ResourceBundle.getString('NuxeoRepositoryConnector.Port'))</nobr>
+		<td class="description"><nobr>$Encoder.bodyEscape($ResourceBundle.getString('NuxeoAuthorityConnector.Port'))</nobr>
 		</td>
 		<td class="value"><input size="5" type="text" id="nuxeo_port"
 			name="nuxeo_port" value="$Encoder.attributeEscape($NUXEO_PORT)" /></td>
 	</tr>
 
 	<tr>
-		<td class="description"><nobr>$Encoder.bodyEscape($ResourceBundle.getString('NuxeoRepositoryConnector.Path'))</nobr>
+		<td class="description"><nobr>$Encoder.bodyEscape($ResourceBundle.getString('NuxeoAuthorityConnector.Path'))</nobr>
 		</td>
 		<td class="value"><input size="32" type="text" id="nuxeo_path"
 			name="nuxeo_path" value="$Encoder.attributeEscape($NUXEO_PATH)" /></td>
@@ -48,14 +48,14 @@ $ResourceBundle.getString('NuxeoRepositoryConnector.Server'))
 	</tr>
 
 	<tr>
-		<td class="description"><nobr>$Encoder.bodyEscape($ResourceBundle.getString('NuxeoRepositoryConnector.Username'))</nobr>
+		<td class="description"><nobr>$Encoder.bodyEscape($ResourceBundle.getString('NuxeoAuthorityConnector.Username'))</nobr>
 		</td>
 		<td class="value"><input size="16" type="text"
 			id="nuxeo_username" name="nuxeo_username"
 			value="$Encoder.attributeEscape($NUXEO_USERNAME)" /></td>
 	</tr>
 	<tr>
-		<td class="description"><nobr>$Encoder.bodyEscape($ResourceBundle.getString('NuxeoRepositoryConnector.Password'))</nobr>
+		<td class="description"><nobr>$Encoder.bodyEscape($ResourceBundle.getString('NuxeoAuthorityConnector.Password'))</nobr>
 		</td>
 		<td class="value"><input size="16" type="password"
 			id="nuxeo_password" name="nuxeo_password"
@@ -76,6 +76,6 @@ $ResourceBundle.getString('NuxeoRepositoryConnector.Server'))
 <input type="hidden" name="nuxeo_username"
 	value="$Encoder.attributeEscape($NUXEO_USERNAME)" />
 <input type="hidden" name="nuxeo_password"
-	value="" />
+	value="$Encoder.attributeEscape($NUXEO_PASSWORD)" />
 
 #end

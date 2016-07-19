@@ -172,7 +172,6 @@ public class NuxeoConnectorTest extends AbstractTest {
 		DateFormat df = DateFormat.getDateTimeInstance();
 		String version = df.format(date);
 		String uid = "297529bf-191a-4c87-8259-28b692394229";
-		String uri = "http://localhost:8080/nuxeo/site/api/v1/id/297529bf-191a-4c87-8259-28b692394229";
 
 		IProcessActivity activities = mock(IProcessActivity.class);
 		IExistingVersions statuses = mock(IExistingVersions.class);

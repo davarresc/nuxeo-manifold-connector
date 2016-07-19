@@ -8,8 +8,8 @@ import org.apache.manifoldcf.core.interfaces.ManifoldCFException;
 
 public class Messages extends org.apache.manifoldcf.ui.i18n.Messages {
 
-	public static final String DEFAULT_BUNDLE_NAME = "org.apache.manifoldcf.crawler.connectors.nuxeo.common";
-	public static final String DEFAULT_PATH_NAME = "org.apache.manifoldcf.crawler.connectors.nuxeo";
+	public static final String DEFAULT_BUNDLE_NAME = "org.apache.manifoldcf.authorities.authorities.nuxeo.common";
+	public static final String DEFAULT_PATH_NAME = "org.apache.manifoldcf.authorities.authorities.nuxeo";
 
 	/** Constructor - do no instantiate
 	  */
