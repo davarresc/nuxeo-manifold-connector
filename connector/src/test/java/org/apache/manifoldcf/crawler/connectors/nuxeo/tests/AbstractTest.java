@@ -17,18 +17,18 @@ public abstract class AbstractTest {
 
 	@Mock
 	public NuxeoClient client;
-	
+
 	public NuxeoRepositoryConnector repositoryConnector;
-	
+
 	@Before
-	public void setup() throws Exception{
+	public void setup() throws Exception {
 		repositoryConnector = new NuxeoRepositoryConnector();
 		repositoryConnector.setNuxeoClient(client);
 	}
-	
+
 	@After
-	public void tearDown() throws Exception{
-		
+	public void tearDown() throws Exception {
+
 	}
-	
+
 }

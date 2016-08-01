@@ -1,0 +1,21 @@
+
+<table class="displaytable">
+	<tr>
+#if($DOMAINS.size() == 0)
+		<td class="message" colspan="2">
+			<nobr>$Encoder.bodyEscape($ResourceBundle.getString('NuxeoRepositoryConnector.NoDomainsConfigured'))</nobr>
+		</td>
+#else
+		<td class="description">
+			<nobr>$Encoder.bodyEscape($ResourceBundle.getString('NuxeoRepositoryConnector.Domains'))</nobr>
+		</td>
+		<td class="value">
+		#set($domaincounter = 0)
+		#foreach($domain in $DOMAINS)
+			<nobr>$Encoder.bodyEscape($domain)</nobr><br/>
+			#set($domaincounter = $domaincounter + 1)
+		#end
+		</td>
+#end
+	</tr>
+</table>
