@@ -22,6 +22,7 @@ import org.apache.manifoldcf.core.interfaces.IPostParameters;
 import org.apache.manifoldcf.core.interfaces.IThreadContext;
 import org.apache.manifoldcf.core.interfaces.ManifoldCFException;
 import org.apache.manifoldcf.core.interfaces.Specification;
+import org.apache.manifoldcf.core.interfaces.SpecificationNode;
 import org.apache.manifoldcf.crawler.connectors.BaseRepositoryConnector;
 import org.apache.manifoldcf.crawler.connectors.nuxeo.client.NuxeoClient;
 import org.apache.manifoldcf.crawler.connectors.nuxeo.model.Ace;
@@ -33,6 +34,7 @@ import org.apache.manifoldcf.crawler.interfaces.IProcessActivity;
 import org.apache.manifoldcf.crawler.interfaces.IRepositoryConnector;
 import org.apache.manifoldcf.crawler.interfaces.ISeedingActivity;
 
+import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 
 public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
@@ -46,12 +48,13 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 	// Configuration tabs
 	private static final String NUXEO_SERVER_TAB_PROPERTY = "NuxeoRepositoryConnector.Server";
 
-	// Configurationt tabs
+	// Specification tabs
+	private static final String CONF_DOMAINS_TAB_PROPERTY = "NuxeoRepositoryConnector.Domains";
 
 	// Prefix for nuxeo configuration and specification parameters
 	private static final String PARAMETER_PREFIX = "nuxeo_";
 
-	// Templates
+	// Templates for Nuxeo configuration
 	/**
 	 * Javascript to check the configuration parameters
 	 */
@@ -66,6 +69,23 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 	 * Server view tab template
 	 */
 	private static final String VIEW_CONFIG_FORWARD = "viewConfiguration_conf.html";
+
+	// Templates for Nuxeo specification
+	/**
+	 * Forward to the javascript to check the specification parameters for the
+	 * job
+	 */
+	private static final String EDIT_SPEC_HEADER_FORWARD = "editSpecification_conf.js";
+
+	/**
+	 * Forward to the template to edit domains for the job
+	 */
+	private static final String EDIT_SPEC_FORWARD_CONF_DOMAINS = "editSpecification_confDomains.html";
+
+	/**
+	 * Forward to the template to view the specification parameters for the job
+	 */
+	private static final String VIEW_SPEC_FORWARD = "viewSpecification_conf.html";
 
 	protected long lastSessionFetch = -1L;
 	protected static final long timeToRelease = 300000L;
@@ -335,9 +355,11 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 			int lastStart = 0;
 			int defaultSize = 50;
 			Boolean isLast = true;
+			NuxeoSpecification ns = NuxeoSpecification.from(spec);
+			List<String> domains = ns.getDomains();
 
 			do {
-				final NuxeoResponse<Document> response = nuxeoClient.getDocuments(lastSeedVersion, lastStart,
+				final NuxeoResponse<Document> response = nuxeoClient.getDocuments(domains, lastSeedVersion, lastStart,
 						defaultSize, isLast);
 
 				for (Document doc : response.getResults()) {
@@ -362,30 +384,6 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 					3, true);
 		}
 	}
-
-	// TDO Specification
-	// public static class NuxeoSpecification {
-	//
-	// private List<String> directories;
-	//
-	// /**
-	// * @param spec
-	// * @return
-	// */
-	// public static NuxeoSpecification from(Specification spec) {
-	// NuxeoSpecification ns = new NuxeoSpecification();
-	//
-	// ns.directories = Lists.newArrayList();
-	//
-	// for (int i = 0, len = spec.getChildCount(); i < len; i++) {
-	// SpecificationNode specificationNode = spec.getChild(i);
-	//
-	// }
-	//
-	// return null;
-	// }
-	//
-	// }
 
 	/** PROCESS DOCUMENTS **/
 	@Override
@@ -480,7 +478,7 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 		}
 
 		// Add respository document information
-		rd.setMimeType("text/html; charset=utf-8");
+		rd.setMimeType(doc.getMediatype());
 		if (lastModified != null)
 			rd.setModifiedDate(lastModified);
 		rd.setIndexingDate(new Date());
@@ -497,6 +495,8 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 			}
 
 		}
+
+		rd.addField("Tags", getTagsFromDocument(doc));
 
 		String documentUri = nuxeoClient.getPathDocument(doc.getUid());
 
@@ -530,11 +530,12 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 		}
 	}
 
-	public String processSpecificationPost(IPostParameters variableContext, Locale locale, Specification ds,
-			int connectionSequenceNumber) throws ManifoldCFException {
-
-		// TODO Specifications
-		return super.processSpecificationPost(variableContext, locale, ds, connectionSequenceNumber);
+	public String[] getTagsFromDocument(Document doc) {
+		try {
+			return nuxeoClient.getTags(doc.getUid());
+		} catch (Exception e) {
+			return new String[] {};
+		}
 	}
 
 	private class ProcessResult {
@@ -553,5 +554,141 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 	@Override
 	public int getConnectorModel() {
 		return IRepositoryConnector.MODEL_ADD_CHANGE_DELETE;
+	}
+
+	/** Specifications **/
+
+	@Override
+	public void viewSpecification(IHTTPOutput out, Locale locale, Specification spec, int connectionSequenceNumber)
+			throws ManifoldCFException, IOException {
+
+		Map<String, Object> paramMap = new HashMap<String, Object>();
+		paramMap.put("SeqNum", Integer.toString(connectionSequenceNumber));
+
+		NuxeoSpecification ns = NuxeoSpecification.from(spec);
+
+		paramMap.put(NuxeoConfiguration.Specification.DOMAINS.toUpperCase(), ns.getDomains());
+
+		Messages.outputResourceWithVelocity(out, locale, VIEW_SPEC_FORWARD, paramMap);
+	}
+
+	@Override
+	public String processSpecificationPost(IPostParameters variableContext, Locale locale, Specification ds,
+			int connectionSequenceNumber) throws ManifoldCFException {
+
+		String seqPrefix = "s" + connectionSequenceNumber + "_";
+
+		String xc = variableContext.getParameter(seqPrefix + "domainscount");
+
+		if (xc != null) {
+			// Delete all preconfigured domains
+			int i = 0;
+			while (i < ds.getChildCount()) {
+				SpecificationNode sn = ds.getChild(i);
+				if (sn.getType().equals(NuxeoConfiguration.Specification.DOMAINS)) {
+					ds.removeChild(i);
+				} else {
+					i++;
+				}
+			}
+
+			SpecificationNode domains = new SpecificationNode(NuxeoConfiguration.Specification.DOMAINS);
+			ds.addChild(ds.getChildCount(), domains);
+			int domainsCount = Integer.parseInt(xc);
+			i = 0;
+			while (i < domainsCount) {
+				String domainDescription = "_" + Integer.toString(i);
+				String domainOpName = seqPrefix + "domainop" + domainDescription;
+				xc = variableContext.getParameter(domainOpName);
+				if (xc != null && xc.equals("Delete")) {
+					i++;
+					continue;
+				}
+
+				String domainKey = variableContext.getParameter(seqPrefix + "domain" + domainDescription);
+				SpecificationNode node = new SpecificationNode(NuxeoConfiguration.Specification.DOMAIN);
+				node.setAttribute(NuxeoConfiguration.Specification.DOMAIN_KEY, domainKey);
+				domains.addChild(domains.getChildCount(), node);
+				i++;
+			}
+
+			String op = variableContext.getParameter(seqPrefix + "domainop");
+			if (op != null && op.equals("Add")) {
+				String domainSpec = variableContext.getParameter(seqPrefix + "domain");
+				SpecificationNode node = new SpecificationNode(NuxeoConfiguration.Specification.DOMAIN);
+				node.setAttribute(NuxeoConfiguration.Specification.DOMAIN_KEY, domainSpec);
+				domains.addChild(domains.getChildCount(), node);
+			}
+		}
+
+		// TODO Specifications
+		return null;
+	}
+
+	@Override
+	public void outputSpecificationBody(IHTTPOutput out, Locale locale, Specification spec,
+			int connectionSequenceNumber, int actualSequenceNumber, String tabName)
+			throws ManifoldCFException, IOException {
+
+		Map<String, Object> paramMap = new HashMap<String, Object>();
+		paramMap.put("TabName", tabName);
+		paramMap.put("SeqNum", Integer.toString(connectionSequenceNumber));
+		paramMap.put("SelectedNum", Integer.toString(actualSequenceNumber));
+
+		NuxeoSpecification ns = NuxeoSpecification.from(spec);
+
+		paramMap.put(NuxeoConfiguration.Specification.DOMAINS.toUpperCase(), ns.getDomains());
+
+		Messages.outputResourceWithVelocity(out, locale, EDIT_SPEC_FORWARD_CONF_DOMAINS, paramMap);
+
+	}
+
+	@Override
+	public void outputSpecificationHeader(IHTTPOutput out, Locale locale, Specification spec,
+			int connectionSequenceNumber, List<String> tabsArray) throws ManifoldCFException, IOException {
+
+		tabsArray.add(Messages.getString(locale, CONF_DOMAINS_TAB_PROPERTY));
+
+		Map<String, Object> paramMap = new HashMap<String, Object>();
+		paramMap.put("SeqNum", Integer.toString(connectionSequenceNumber));
+
+		Messages.outputResourceWithVelocity(out, locale, EDIT_SPEC_HEADER_FORWARD, paramMap);
+	}
+
+	public static class NuxeoSpecification {
+
+		private List<String> domains;
+
+		public List<String> getDomains() {
+			return this.domains;
+		}
+
+		/**
+		 * @param spec
+		 * @return
+		 */
+		public static NuxeoSpecification from(Specification spec) {
+			NuxeoSpecification ns = new NuxeoSpecification();
+
+			ns.domains = Lists.newArrayList();
+
+			for (int i = 0, len = spec.getChildCount(); i < len; i++) {
+				SpecificationNode sn = spec.getChild(i);
+
+				if (sn.getType().equals(NuxeoConfiguration.Specification.DOMAINS)) {
+					for (int j = 0, sLen = sn.getChildCount(); j < sLen; j++) {
+						SpecificationNode spectNode = sn.getChild(j);
+						if (spectNode.getType().equals(NuxeoConfiguration.Specification.DOMAIN)) {
+							ns.domains.add(spectNode.getAttributeValue(NuxeoConfiguration.Specification.DOMAIN_KEY));
+						}
+					}
+				} else {
+					// TODO specifications
+				}
+			}
+
+			return ns;
+		}
+
 	}
 }

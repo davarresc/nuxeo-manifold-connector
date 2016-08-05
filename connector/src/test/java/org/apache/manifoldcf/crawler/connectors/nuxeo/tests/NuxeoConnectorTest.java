@@ -8,6 +8,7 @@ import static org.mockito.Matchers.anyInt;
 import static org.mockito.Matchers.anyLong;
 import static org.mockito.Matchers.anyObject;
 import static org.mockito.Matchers.anyString;
+import static org.mockito.Matchers.anyListOf;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -46,7 +47,8 @@ public class NuxeoConnectorTest extends AbstractTest {
 	@Override
 	public void setup() throws Exception {
 		super.setup();
-		when(client.getDocuments(anyString(), anyInt(), anyInt(), anyObject()))
+		
+		when(client.getDocuments(anyListOf(String.class), anyString(), anyInt(), anyInt(), anyObject()))
 				.thenReturn(new NuxeoResponse<Document>(Collections.<Document> emptyList(), 0, 0, true));
 	};
 
@@ -67,7 +69,7 @@ public class NuxeoConnectorTest extends AbstractTest {
 		documents.add(document);
 		documents.add(document);
 
-		when(client.getDocuments(anyString(), anyInt(), anyInt(), anyObject()))
+		when(client.getDocuments(anyListOf(String.class), anyString(), anyInt(), anyInt(), anyObject()))
 				.thenReturn(new NuxeoResponse<Document>(documents, 0, 0, true))
 				.thenReturn(new NuxeoResponse<Document>(Collections.<Document> emptyList(), 0, 0, true));
 
@@ -75,7 +77,8 @@ public class NuxeoConnectorTest extends AbstractTest {
 				BaseRepositoryConnector.JOBMODE_CONTINUOUS);
 
 		verify(activities, times(2)).addSeedDocument(anyString());
-		verify(client, times(1)).getDocuments(anyString(), anyInt(), anyInt(), anyObject());
+		verify(client, times(1)).getDocuments(anyListOf(String.class), anyString(), anyInt(), anyInt(),
+				anyObject());
 
 	}
 
@@ -85,14 +88,15 @@ public class NuxeoConnectorTest extends AbstractTest {
 		Specification spec = new Specification();
 		long seedTime = 0;
 
-		when(client.getDocuments(anyString(), anyInt(), anyInt(), anyObject()))
+		when(client.getDocuments(anyListOf(String.class), anyString(), anyInt(), anyInt(), anyObject()))
 				.thenReturn(new NuxeoResponse<Document>(Collections.<Document> emptyList(), 0, 0, true));
 
 		repositoryConnector.addSeedDocuments(activities, spec, "", seedTime,
 				BaseRepositoryConnector.JOBMODE_CONTINUOUS);
 
 		verify(activities, times(0)).addSeedDocument(anyString());
-		verify(client, times(1)).getDocuments(anyString(), anyInt(), anyInt(), anyObject());
+		verify(client, times(1)).getDocuments(anyListOf(String.class), anyString(), anyInt(), anyInt(),
+				anyObject());
 
 	}
 

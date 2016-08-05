@@ -3,11 +3,14 @@ package org.apache.manifoldcf.crawler.connectors.nuxeo.model;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
 
 import org.apache.manifoldcf.core.common.DateParser;
 import org.apache.manifoldcf.crawler.connectors.nuxeo.model.builder.NuxeoResourceBuilder;
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -30,6 +33,28 @@ public class Document extends NuxeoResource {
 
 	protected static final String KEY_PROPERTIES = "properties";
 
+	protected static final String DC_PREFFIX = "dc:";
+	protected static final String KEY_DC_DESCRIPTION = "description";
+	protected static final String KEY_DC_LANGUAGE = "language";
+	protected static final String KEY_DC_COVERAGE = "coverage";
+	protected static final String KEY_DC_VALID = "valid";
+	protected static final String KEY_DC_CREATOR = "creator";
+	protected static final String KEY_DC_CREATED = "created";
+	protected static final String KEY_DC_LAST_CONTRIBUTOR = "dc:lastContributor";
+	protected static final String KEY_DC_RIGHTS = "rights";
+	protected static final String KEY_DC_EXPIRED = "expired";
+	protected static final String KEY_DC_ISSUED = "issued";
+	protected static final String KEY_DC_NATURE = "nature";
+	protected static final String KEY_DC_SUBJECTS = "subjects";
+	protected static final String KEY_DC_CONTRIBUTORS = "contributors";
+	protected static final String KEY_DC_SOURCE = "source";
+	protected static final String KEY_DC_PUBLISHER = "publisher";
+
+	protected static final String NOTE_PREFFIX = "note:";
+	protected static final String NOTE_SAVE_PREFFIX = "note__";
+	protected static final String KEY_NOTE_NOTE = "note";
+	protected static final String KEY_NOTE_MYMETYPE = "mime_type";
+
 	protected static final String DOCUMENT_SIZE = "size";
 
 	// Attributes
@@ -45,6 +70,25 @@ public class Document extends NuxeoResource {
 	protected Boolean isCheckedOut;
 	protected String parentRef;
 	protected String repository;
+
+	protected String description;
+	protected String language;
+	protected String coverage;
+	protected String valid;
+	protected String creator;
+	protected String created;
+	protected String lastContributor;
+	protected String rights;
+	protected String expired;
+	protected String issued;
+	protected String nature;
+	protected List<String> subjects = new ArrayList<>();
+	protected List<String> contributors = new ArrayList<>();
+	protected String source;
+	protected String publisher;
+
+	protected String note;
+	protected String noteMimeType;
 
 	@SuppressWarnings("unused")
 	private JSONObject delegated;
@@ -98,6 +142,78 @@ public class Document extends NuxeoResource {
 		return this.length;
 	}
 
+	public String getContent() {
+		return content;
+	}
+
+	public String getDescription() {
+		return description;
+	}
+
+	public String getLanguage() {
+		return language;
+	}
+
+	public String getCoverage() {
+		return coverage;
+	}
+
+	public String getValid() {
+		return valid;
+	}
+
+	public String getCreator() {
+		return creator;
+	}
+
+	public String getCreated() {
+		return created;
+	}
+
+	public String getLastContributor() {
+		return lastContributor;
+	}
+
+	public String getRights() {
+		return rights;
+	}
+
+	public String getExpired() {
+		return expired;
+	}
+
+	public String getIssued() {
+		return issued;
+	}
+
+	public String getNature() {
+		return nature;
+	}
+
+	public List<String> getSubjects() {
+		return subjects;
+	}
+
+	public List<String> getContributors() {
+		return contributors;
+	}
+
+	public String getSource() {
+		return source;
+	}
+
+	public String getPublisher() {
+		return publisher;
+	}
+
+	public String getNote() {
+		return note;
+	}
+
+	public String getNoteMimeType() {
+		return noteMimeType;
+	}
+
 	public boolean hasContent() {
 		return this.length > 0 && this.content != null;
 	}
@@ -123,14 +239,38 @@ public class Document extends NuxeoResource {
 		docMetadata.put(KEY_REPOSITORY, this.repository);
 		docMetadata.put(KEY_PARENT_REF, this.parentRef);
 
+		addIfNotEmpty(docMetadata, KEY_DC_DESCRIPTION, this.description);
+		addIfNotEmpty(docMetadata, KEY_DC_LANGUAGE, this.language);
+		addIfNotEmpty(docMetadata, KEY_DC_COVERAGE, this.coverage);
+		addIfNotEmpty(docMetadata, KEY_DC_VALID, this.valid);
+		addIfNotEmpty(docMetadata, KEY_DC_CREATOR, this.creator);
+		addIfNotEmpty(docMetadata, KEY_DC_LAST_CONTRIBUTOR, this.lastContributor);
+		addIfNotEmpty(docMetadata, KEY_DC_RIGHTS, this.rights);
+		addIfNotEmpty(docMetadata, KEY_DC_EXPIRED, this.expired);
+		addIfNotEmpty(docMetadata, KEY_DC_CREATED, this.created);
+		addIfNotEmpty(docMetadata, KEY_DC_ISSUED, this.issued);
+		addIfNotEmpty(docMetadata, KEY_DC_NATURE, this.nature);
+		addIfNotEmpty(docMetadata, KEY_DC_SOURCE, this.source);
+		addIfNotEmpty(docMetadata, KEY_DC_PUBLISHER, this.publisher);
+		addIfNotEmpty(docMetadata, KEY_DC_SUBJECTS, this.subjects);
+		addIfNotEmpty(docMetadata, KEY_DC_CONTRIBUTORS, this.contributors);
+		addIfNotEmpty(docMetadata, NOTE_SAVE_PREFFIX + KEY_NOTE_NOTE, this.note);
+		addIfNotEmpty(docMetadata, NOTE_SAVE_PREFFIX + KEY_NOTE_MYMETYPE, this.noteMimeType);
+
 		return docMetadata;
 	}
 
-	public static NuxeoResourceBuilder<? extends Document> builder() {
-		return new PageBuilder();
+	public void addIfNotEmpty(Map<String, Object> docMetadata, String key, Object obj) {
+		if (obj != null && ((obj instanceof String && !((String) obj).isEmpty()) || !(obj instanceof String))) {
+			docMetadata.put(key, obj);
+		}
 	}
 
-	public static class PageBuilder implements NuxeoResourceBuilder<Document> {
+	public static NuxeoResourceBuilder<? extends Document> builder() {
+		return new DocumentBuilder();
+	}
+
+	public static class DocumentBuilder implements NuxeoResourceBuilder<Document> {
 
 		public Document fromJson(JSONObject jsonDocument) {
 			return fromJson(jsonDocument, new Document());
@@ -140,7 +280,7 @@ public class Document extends NuxeoResource {
 
 			try {
 				String uid = jsonDocument.getString(KEY_UID);
-				String tilte = jsonDocument.getString(KEY_TITLE);
+				String title = jsonDocument.getString(KEY_TITLE);
 				Date lastModified = DateParser.parseISO8601Date(jsonDocument.optString(KEY_LAST_MODIFIED, ""));
 				String state = jsonDocument.optString(KEY_STATE, "");
 				String path = jsonDocument.optString(KEY_PATH, "");
@@ -150,7 +290,7 @@ public class Document extends NuxeoResource {
 				String parentRef = jsonDocument.optString(KEY_PARENT_REF, "");
 
 				document.uid = uid;
-				document.title = tilte;
+				document.title = title;
 				document.lastModified = lastModified;
 				document.state = state;
 				document.path = path;
@@ -162,8 +302,44 @@ public class Document extends NuxeoResource {
 				if (document.content != null)
 					document.length = document.content.getBytes().length;
 
-				// JSONObject properties = (JSONObject)
-				// jsonDocument.opt(KEY_PROPERTIES);
+				JSONObject properties = (JSONObject) jsonDocument.opt(KEY_PROPERTIES);
+
+				if (properties != null) {
+
+					document.description = properties.optString(DC_PREFFIX + KEY_DC_DESCRIPTION);
+					document.language = properties.optString(DC_PREFFIX + KEY_DC_LANGUAGE);
+					document.coverage = properties.optString(DC_PREFFIX + KEY_DC_COVERAGE);
+					document.valid = properties.optString(DC_PREFFIX + KEY_DC_VALID);
+					document.creator = properties.optString(DC_PREFFIX + KEY_DC_CREATOR);
+					document.lastContributor = properties.optString(DC_PREFFIX + KEY_DC_LAST_CONTRIBUTOR);
+					document.rights = properties.optString(DC_PREFFIX + KEY_DC_RIGHTS);
+					document.expired = properties.optString(DC_PREFFIX + KEY_DC_EXPIRED);
+					document.created = properties.optString(DC_PREFFIX + KEY_DC_CREATED);
+					document.issued = properties.optString(DC_PREFFIX + KEY_DC_ISSUED);
+					document.nature = properties.optString(DC_PREFFIX + KEY_DC_NATURE);
+					document.source = properties.optString(DC_PREFFIX + KEY_DC_SOURCE);
+					document.publisher = properties.optString(DC_PREFFIX + KEY_DC_PUBLISHER);
+
+					JSONArray subjectsArray = properties.optJSONArray(DC_PREFFIX + KEY_DC_SUBJECTS);
+
+					for (int i = 0; i < subjectsArray.length(); i++) {
+						if (subjectsArray.optString(i) != null)
+							document.subjects.add(subjectsArray.getString(i));
+					}
+
+					JSONArray contributorsArray = properties.optJSONArray(DC_PREFFIX + KEY_DC_CONTRIBUTORS);
+
+					for (int i = 0; i < contributorsArray.length(); i++) {
+						if (contributorsArray.optString(i) != null)
+							document.contributors.add(contributorsArray.getString(i));
+					}
+
+					if (document.type.equalsIgnoreCase(DocumentType.NOTE.value())) {
+						document.note = properties.optString(NOTE_PREFFIX + KEY_NOTE_NOTE);
+						document.noteMimeType = properties.optString(NOTE_PREFFIX + KEY_NOTE_MYMETYPE);
+					}
+
+				}
 
 				document.delegated = jsonDocument;
 

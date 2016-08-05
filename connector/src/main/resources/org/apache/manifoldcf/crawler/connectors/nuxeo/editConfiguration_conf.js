@@ -21,7 +21,7 @@ function checkConfig()
 {
   if (editconnection.nuxeo_port.value != "" && !isInteger(editconnection.nuxeo_port.value))
   {
-    alert("$Encoder.bodyJavascriptEscape($ResourceBundle.getString('NuxeoRepositoryConnector.ConfPortMustBeAnInteger'))");
+    alert("$Encoder.bodyJavascriptEscape($ResourceBundle.getString('NuxeoRepositoryConnector.PortMustBeAnInteger'))");
     editconnection.nuxeo_port.focus();
     return false;
   }

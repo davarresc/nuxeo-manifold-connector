@@ -6,8 +6,8 @@ package org.apache.manifoldcf.crawler.connectors.nuxeo.client;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
-
 import javax.net.ssl.SSLSocketFactory;
 
 import org.apache.commons.codec.binary.Base64;
@@ -53,6 +53,7 @@ public class NuxeoClient {
 	private static final String CONTENT_QUERY = CONTENT_PATH + "query";
 	private static final String CONTENT_UUID = CONTENT_PATH + "id";
 	public static final String CONTENT_AUTHORITY = CONTENT_PATH + "user";
+	public static final String CONTENT_TAG = CONTENT_PATH + "";
 
 	// private Logger logger = LoggerFactory.getLogger(NuxeoClient.class);
 
@@ -154,7 +155,7 @@ public class NuxeoClient {
 		HttpGet httpGet = new HttpGet(sanitizedUrl);
 
 		httpGet.addHeader("accepted", "application/json");
-		
+
 		if (useBasicAuthentication())
 			httpGet.addHeader("Authorization", "Basic " + Base64.encodeBase64String(
 					String.format("%s:%s", this.username, this.password).getBytes(Charset.forName("UTF-8"))));
@@ -188,20 +189,50 @@ public class NuxeoClient {
 	 * @return
 	 */
 	@SuppressWarnings("unchecked")
-	public NuxeoResponse<Document> getDocuments(String lastSeedVersion, int start, int limit, Object object)
-			throws Exception {
+	public NuxeoResponse<Document> getDocuments(List<String> domains, String lastSeedVersion, int start, int limit,
+			Object object) throws Exception {
 
 		String url = null;
 
 		if (lastSeedVersion == null || lastSeedVersion.isEmpty()) {
-			url = String.format("%s://%s:%s/%s/%s?pageSize=%s&currentPageIndex=%s", protocol, host, port, path,
-					CONTENT_QUERY, limit, start);
+			String query = "";
+			if (!domains.isEmpty()) {
+				Iterator<String> itdom = domains.iterator();
+
+				query = String.format("SELECT * FROM Document WHERE ( ecm:path STARTSWITH '/%s'", itdom.next());
+
+				while (itdom.hasNext()) {
+					query = String.format("%s OR ecm:path STARTSWITH '/%s'", query, itdom.next());
+				}
+				query = URLEncoder.encode(query);
+				query = String.format("query=%s)&", query);
+			}
+
+			url = String.format("%s://%s:%s/%s/%s?%spageSize=%s&currentPageIndex=%s", protocol, host, port, path,
+					CONTENT_QUERY, query, limit, start);
+
 		} else {
-			String query = URLEncoder.encode("SELECT * FROM Document WHERE dc:modified > ?");
+			String query = "SELECT * FROM Document WHERE dc:modified > ?";
+			
+			
+			if (!domains.isEmpty()) {
+				Iterator<String> itdom = domains.iterator();
+
+				query = String.format("%s AND ( ecm:path STARTSWITH '/%s'", query, itdom.next());
+
+				while (itdom.hasNext()) {
+					query = String.format("%s OR ecm:path STARTSWITH '/%s'", query,itdom.next());
+				}
+				query = URLEncoder.encode(query);
+				query = String.format("%s)", query);
+			}
 
 			url = String.format("%s://%s:%s/%s/%s?query=%s&pageSize=%s&currentPageIndex=%s&queryParams=%s", protocol,
 					host, port, path, CONTENT_QUERY, query, limit, start, lastSeedVersion);
+
 		}
+
+		url = sanitizedUrl(url);
 
 		return (NuxeoResponse<Document>) getNuxeoResource(url, Document.builder());
 	}
@@ -394,6 +425,33 @@ public class NuxeoClient {
 		}
 
 		return authorities;
+	}
+
+	/**
+	 * @param uid
+	 * @return
+	 * @throws Exception
+	 */
+	public String[] getTags(String uid) throws Exception {
+		List<String> tags = new ArrayList<>();
+
+		String query = "select%20*%20from%20Tagging%20where%20relation%3Asource='" + uid + "'";
+		String url = String.format("%s://%s:%s/%s/%s?query=%s", protocol, host, port, path, CONTENT_QUERY, query);
+		url = sanitizedUrl(url);
+
+		HttpGet httpGet = createGetRequest(url);
+		HttpResponse response = executeRequest(httpGet);
+		HttpEntity entity = response.getEntity();
+		String stringEntity = EntityUtils.toString(entity);
+		EntityUtils.consume(entity);
+
+		JSONArray tagsObject = new JSONObject(stringEntity).getJSONArray("entries");
+
+		for (int i = 0; i < tagsObject.length(); i++) {
+			tags.add(tagsObject.getJSONObject(i).getString("title"));
+		}
+
+		return tags.toArray(new String[tags.size()]);
 	}
 
 }
