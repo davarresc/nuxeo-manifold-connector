@@ -47,9 +47,9 @@ public class NuxeoConnectorTest extends AbstractTest {
 	@Override
 	public void setup() throws Exception {
 		super.setup();
-		
-		when(client.getDocuments(anyListOf(String.class), anyString(), anyInt(), anyInt(), anyObject()))
-				.thenReturn(new NuxeoResponse<Document>(Collections.<Document> emptyList(), 0, 0, true));
+
+		when(client.getDocuments(anyListOf(String.class), anyListOf(String.class), anyString(), anyInt(), anyInt(),
+				anyObject())).thenReturn(new NuxeoResponse<Document>(Collections.<Document> emptyList(), 0, 0, true));
 	};
 
 	@Test
@@ -69,16 +69,16 @@ public class NuxeoConnectorTest extends AbstractTest {
 		documents.add(document);
 		documents.add(document);
 
-		when(client.getDocuments(anyListOf(String.class), anyString(), anyInt(), anyInt(), anyObject()))
-				.thenReturn(new NuxeoResponse<Document>(documents, 0, 0, true))
-				.thenReturn(new NuxeoResponse<Document>(Collections.<Document> emptyList(), 0, 0, true));
+		when(client.getDocuments(anyListOf(String.class), anyListOf(String.class), anyString(), anyInt(), anyInt(),
+				anyObject())).thenReturn(new NuxeoResponse<Document>(documents, 0, 0, true))
+						.thenReturn(new NuxeoResponse<Document>(Collections.<Document> emptyList(), 0, 0, true));
 
 		repositoryConnector.addSeedDocuments(activities, spec, "", seedTime,
 				BaseRepositoryConnector.JOBMODE_CONTINUOUS);
 
 		verify(activities, times(2)).addSeedDocument(anyString());
-		verify(client, times(1)).getDocuments(anyListOf(String.class), anyString(), anyInt(), anyInt(),
-				anyObject());
+		verify(client, times(1)).getDocuments(anyListOf(String.class), anyListOf(String.class), anyString(), anyInt(),
+				anyInt(), anyObject());
 
 	}
 
@@ -88,15 +88,15 @@ public class NuxeoConnectorTest extends AbstractTest {
 		Specification spec = new Specification();
 		long seedTime = 0;
 
-		when(client.getDocuments(anyListOf(String.class), anyString(), anyInt(), anyInt(), anyObject()))
-				.thenReturn(new NuxeoResponse<Document>(Collections.<Document> emptyList(), 0, 0, true));
+		when(client.getDocuments(anyListOf(String.class), anyListOf(String.class), anyString(), anyInt(), anyInt(),
+				anyObject())).thenReturn(new NuxeoResponse<Document>(Collections.<Document> emptyList(), 0, 0, true));
 
 		repositoryConnector.addSeedDocuments(activities, spec, "", seedTime,
 				BaseRepositoryConnector.JOBMODE_CONTINUOUS);
 
 		verify(activities, times(0)).addSeedDocument(anyString());
-		verify(client, times(1)).getDocuments(anyListOf(String.class), anyString(), anyInt(), anyInt(),
-				anyObject());
+		verify(client, times(1)).getDocuments(anyListOf(String.class), anyListOf(String.class), anyString(), anyInt(),
+				anyInt(), anyObject());
 
 	}
 

@@ -11,6 +11,7 @@ function s${SeqNum}_SpecOp(n, opValue, anchorvalue)
   postFormSetAnchor(anchorvalue);
 }
 
+//Domains
 function s${SeqNum}_SpecDeleteDomain(i)
 {
 	s${SeqNum}_SpecOp("s${SeqNum}_domainop_"+i,"Delete","domain_"+i);
@@ -26,6 +27,24 @@ function s${SeqNum}_SpecAddDomain(i)
     return;
   }
   s${SeqNum}_SpecOp("s${SeqNum}_domainop","Add","domain_"+i);
+}
+
+//Documents
+function s${SeqNum}_SpecDeleteDocumentType(i)
+{
+	s${SeqNum}_SpecOp("s${SeqNum}_documentTypeop_"+i,"Delete","documentType_"+i);
+}
+
+function s${SeqNum}_SpecAddDocumentType(i)
+{
+  var x = i-1;
+  if (editjob["s${SeqNum}_documentType"].value == "")
+  {
+    alert("$Encoder.bodyJavascriptEscape($ResourceBundle.getString('NuxeoRepositoryConnector.TypeInADocumentType'))");
+    editjob.s${SeqNum}_documentType.focus();
+    return;
+  }
+  s${SeqNum}_SpecOp("s${SeqNum}_documentTypeop","Add","documentType_"+i);
 }
 
 </script>
