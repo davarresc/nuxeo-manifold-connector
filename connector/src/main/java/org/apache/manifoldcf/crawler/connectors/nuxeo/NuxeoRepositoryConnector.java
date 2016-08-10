@@ -50,6 +50,8 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 
 	// Specification tabs
 	private static final String CONF_DOMAINS_TAB_PROPERTY = "NuxeoRepositoryConnector.Domains";
+	private static final String CONF_DOCUMENTS_TYPE_TAB_PROPERTY = "NuxeoRepositoryConnector.DocumentsType";
+	private static final String CONF_DOCUMENT_PROPERTY = "NuxeoRepositoryConnector.Documents";
 
 	// Prefix for nuxeo configuration and specification parameters
 	private static final String PARAMETER_PREFIX = "nuxeo_";
@@ -81,6 +83,16 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 	 * Forward to the template to edit domains for the job
 	 */
 	private static final String EDIT_SPEC_FORWARD_CONF_DOMAINS = "editSpecification_confDomains.html";
+
+	/**
+	 * Forward to the template to edit documents type for the job
+	 */
+	private static final String EDIT_SPEC_FORWARD_CONF_DOCUMENTS_TYPE = "editSpecification_confDocumentsType.html";
+
+	/**
+	 * Forward to the template to edit document properties for the job
+	 */
+	private static final String EDIT_SPEC_FORWARD_CONF_DOCUMENTS = "editSpecification_confDocuments.html";
 
 	/**
 	 * Forward to the template to view the specification parameters for the job
@@ -357,10 +369,11 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 			Boolean isLast = true;
 			NuxeoSpecification ns = NuxeoSpecification.from(spec);
 			List<String> domains = ns.getDomains();
+			List<String> documentsType = ns.getDocumentsType();
 
 			do {
-				final NuxeoResponse<Document> response = nuxeoClient.getDocuments(domains, lastSeedVersion, lastStart,
-						defaultSize, isLast);
+				final NuxeoResponse<Document> response = nuxeoClient.getDocuments(domains, documentsType,
+						lastSeedVersion, lastStart, defaultSize, isLast);
 
 				for (Document doc : response.getResults()) {
 					activities.addSeedDocument(doc.getUid());
@@ -408,7 +421,8 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 					initNuxeoClient();
 				}
 
-				pResult = processDocument(documentId, version, activities, doLog, Maps.<String, String> newHashMap());
+				pResult = processDocument(documentId, spec, version, activities, doLog,
+						Maps.<String, String> newHashMap());
 			} catch (Exception exception) {
 				long interruptionRetryTime = 5L * 60L * 1000L;
 				String message = "Server appears down during seeding: " + exception.getMessage();
@@ -436,12 +450,13 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 	 * @param newHashMap
 	 * @return
 	 */
-	private ProcessResult processDocument(String documentId, String version, IProcessActivity activities, boolean doLog,
-			HashMap<String, String> extraProperties) throws ManifoldCFException, ServiceInterruption, IOException {
+	private ProcessResult processDocument(String documentId, Specification spec, String version,
+			IProcessActivity activities, boolean doLog, HashMap<String, String> extraProperties)
+			throws ManifoldCFException, ServiceInterruption, IOException {
 
 		Document doc = nuxeoClient.getDocument(documentId);
 
-		return processDocumentInternal(doc, documentId, version, activities, doLog, extraProperties);
+		return processDocumentInternal(doc, documentId, spec, version, activities, doLog, extraProperties);
 	}
 
 	/**
@@ -453,11 +468,12 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 	 * @param extraProperties
 	 * @return
 	 */
-	private ProcessResult processDocumentInternal(Document doc, String manifoldDocumentIdentifier, String version,
-			IProcessActivity activities, boolean doLog, HashMap<String, String> extraProperties)
+	private ProcessResult processDocumentInternal(Document doc, String manifoldDocumentIdentifier, Specification spec,
+			String version, IProcessActivity activities, boolean doLog, HashMap<String, String> extraProperties)
 			throws ManifoldCFException, ServiceInterruption, IOException {
 
 		RepositoryDocument rd = new RepositoryDocument();
+		NuxeoSpecification ns = NuxeoSpecification.from(spec);
 
 		Date lastModified = doc.getLastModified();
 
@@ -496,7 +512,8 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 
 		}
 
-		rd.addField("Tags", getTagsFromDocument(doc));
+		if (ns.isProcessTags())
+			rd.addField("Tags", getTagsFromDocument(doc));
 
 		String documentUri = nuxeoClient.getPathDocument(doc.getUid());
 
@@ -568,6 +585,8 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 		NuxeoSpecification ns = NuxeoSpecification.from(spec);
 
 		paramMap.put(NuxeoConfiguration.Specification.DOMAINS.toUpperCase(), ns.getDomains());
+		paramMap.put(NuxeoConfiguration.Specification.DOCUMENTS_TYPE.toUpperCase(), ns.documentsType);
+		paramMap.put(NuxeoConfiguration.Specification.PROCESS_TAGS.toUpperCase(), ns.isProcessTags().toString());
 
 		Messages.outputResourceWithVelocity(out, locale, VIEW_SPEC_FORWARD, paramMap);
 	}
@@ -578,6 +597,7 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 
 		String seqPrefix = "s" + connectionSequenceNumber + "_";
 
+		// DOMAINS
 		String xc = variableContext.getParameter(seqPrefix + "domainscount");
 
 		if (xc != null) {
@@ -621,6 +641,62 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 			}
 		}
 
+		// TYPE OF DOCUMENTS
+		String xt = variableContext.getParameter(seqPrefix + "documentsTypecount");
+
+		if (xt != null) {
+			// Delete all preconfigured type of documents
+			int i = 0;
+			while (i < ds.getChildCount()) {
+				SpecificationNode sn = ds.getChild(i);
+				if (sn.getType().equals(NuxeoConfiguration.Specification.DOCUMENTS_TYPE)) {
+					ds.removeChild(i);
+				} else {
+					i++;
+				}
+			}
+
+			SpecificationNode documentsType = new SpecificationNode(NuxeoConfiguration.Specification.DOCUMENTS_TYPE);
+			ds.addChild(ds.getChildCount(), documentsType);
+			int documentsTypeCount = Integer.parseInt(xt);
+			i = 0;
+			while (i < documentsTypeCount) {
+				String documentTypeDescription = "_" + Integer.toString(i);
+				String documentTypeOpName = seqPrefix + "documentTypeop" + documentTypeDescription;
+				xt = variableContext.getParameter(documentTypeOpName);
+				if (xt != null && xt.equals("Delete")) {
+					i++;
+					continue;
+				}
+
+				String documentTypeKey = variableContext
+						.getParameter(seqPrefix + "documentType" + documentTypeDescription);
+				SpecificationNode node = new SpecificationNode(NuxeoConfiguration.Specification.DOCUMENT_TYPE);
+				node.setAttribute(NuxeoConfiguration.Specification.DOCUMENT_TYPE_KEY, documentTypeKey);
+				documentsType.addChild(documentsType.getChildCount(), node);
+				i++;
+			}
+
+			String op = variableContext.getParameter(seqPrefix + "documentTypeop");
+			if (op != null && op.equals("Add")) {
+				String documentTypeSpec = variableContext.getParameter(seqPrefix + "documentType");
+				SpecificationNode node = new SpecificationNode(NuxeoConfiguration.Specification.DOCUMENT_TYPE);
+				node.setAttribute(NuxeoConfiguration.Specification.DOCUMENT_TYPE_KEY, documentTypeSpec);
+				documentsType.addChild(documentsType.getChildCount(), node);
+			}
+
+		}
+
+		// TAGS
+		SpecificationNode documents = new SpecificationNode(NuxeoConfiguration.Specification.DOCUMENTS);
+		ds.addChild(ds.getChildCount(), documents);
+
+		String processTags = variableContext.getParameter(seqPrefix + NuxeoConfiguration.Specification.PROCESS_TAGS);
+
+		if (processTags != null && !processTags.isEmpty()) {
+			documents.setAttribute(NuxeoConfiguration.Specification.PROCESS_TAGS, String.valueOf(processTags));
+		}
+
 		// TODO Specifications
 		return null;
 	}
@@ -638,8 +714,12 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 		NuxeoSpecification ns = NuxeoSpecification.from(spec);
 
 		paramMap.put(NuxeoConfiguration.Specification.DOMAINS.toUpperCase(), ns.getDomains());
+		paramMap.put(NuxeoConfiguration.Specification.DOCUMENTS_TYPE.toUpperCase(), ns.getDocumentsType());
+		paramMap.put(NuxeoConfiguration.Specification.PROCESS_TAGS.toUpperCase(), ns.isProcessTags());
 
 		Messages.outputResourceWithVelocity(out, locale, EDIT_SPEC_FORWARD_CONF_DOMAINS, paramMap);
+		Messages.outputResourceWithVelocity(out, locale, EDIT_SPEC_FORWARD_CONF_DOCUMENTS_TYPE, paramMap);
+		Messages.outputResourceWithVelocity(out, locale, EDIT_SPEC_FORWARD_CONF_DOCUMENTS, paramMap);
 
 	}
 
@@ -648,6 +728,8 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 			int connectionSequenceNumber, List<String> tabsArray) throws ManifoldCFException, IOException {
 
 		tabsArray.add(Messages.getString(locale, CONF_DOMAINS_TAB_PROPERTY));
+		tabsArray.add(Messages.getString(locale, CONF_DOCUMENTS_TYPE_TAB_PROPERTY));
+		tabsArray.add(Messages.getString(locale, CONF_DOCUMENT_PROPERTY));
 
 		Map<String, Object> paramMap = new HashMap<String, Object>();
 		paramMap.put("SeqNum", Integer.toString(connectionSequenceNumber));
@@ -658,9 +740,19 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 	public static class NuxeoSpecification {
 
 		private List<String> domains;
+		private List<String> documentsType;
+		private Boolean processTags = false;
 
 		public List<String> getDomains() {
 			return this.domains;
+		}
+
+		public List<String> getDocumentsType() {
+			return this.documentsType;
+		}
+
+		public Boolean isProcessTags() {
+			return this.processTags;
 		}
 
 		/**
@@ -671,6 +763,7 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 			NuxeoSpecification ns = new NuxeoSpecification();
 
 			ns.domains = Lists.newArrayList();
+			ns.documentsType = Lists.newArrayList();
 
 			for (int i = 0, len = spec.getChildCount(); i < len; i++) {
 				SpecificationNode sn = spec.getChild(i);
@@ -682,6 +775,17 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 							ns.domains.add(spectNode.getAttributeValue(NuxeoConfiguration.Specification.DOMAIN_KEY));
 						}
 					}
+				} else if (sn.getType().equals(NuxeoConfiguration.Specification.DOCUMENTS_TYPE)) {
+					for (int j = 0, sLen = sn.getChildCount(); j < sLen; j++) {
+						SpecificationNode spectNode = sn.getChild(j);
+						if (spectNode.getType().equals(NuxeoConfiguration.Specification.DOCUMENT_TYPE)) {
+							ns.documentsType.add(
+									spectNode.getAttributeValue(NuxeoConfiguration.Specification.DOCUMENT_TYPE_KEY));
+						}
+					}
+				} else if (sn.getType().equals(NuxeoConfiguration.Specification.DOCUMENTS)) {
+					String s = sn.getAttributeValue(NuxeoConfiguration.Specification.PROCESS_TAGS);
+					ns.processTags = Boolean.valueOf(s);
 				} else {
 					// TODO specifications
 				}

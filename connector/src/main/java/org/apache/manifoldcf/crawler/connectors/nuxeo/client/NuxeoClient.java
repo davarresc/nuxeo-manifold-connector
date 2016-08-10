@@ -189,52 +189,68 @@ public class NuxeoClient {
 	 * @return
 	 */
 	@SuppressWarnings("unchecked")
-	public NuxeoResponse<Document> getDocuments(List<String> domains, String lastSeedVersion, int start, int limit,
-			Object object) throws Exception {
+	public NuxeoResponse<Document> getDocuments(List<String> domains, List<String> documentsType,
+			String lastSeedVersion, int start, int limit, Object object) throws Exception {
 
 		String url = null;
 
-		if (lastSeedVersion == null || lastSeedVersion.isEmpty()) {
-			String query = "";
-			if (!domains.isEmpty()) {
-				Iterator<String> itdom = domains.iterator();
-
-				query = String.format("SELECT * FROM Document WHERE ( ecm:path STARTSWITH '/%s'", itdom.next());
-
-				while (itdom.hasNext()) {
-					query = String.format("%s OR ecm:path STARTSWITH '/%s'", query, itdom.next());
-				}
-				query = URLEncoder.encode(query);
-				query = String.format("query=%s)&", query);
-			}
-
-			url = String.format("%s://%s:%s/%s/%s?%spageSize=%s&currentPageIndex=%s", protocol, host, port, path,
-					CONTENT_QUERY, query, limit, start);
-
-		} else {
-			String query = "SELECT * FROM Document WHERE dc:modified > ?";
-			
-			
-			if (!domains.isEmpty()) {
-				Iterator<String> itdom = domains.iterator();
-
-				query = String.format("%s AND ( ecm:path STARTSWITH '/%s'", query, itdom.next());
-
-				while (itdom.hasNext()) {
-					query = String.format("%s OR ecm:path STARTSWITH '/%s'", query,itdom.next());
-				}
-				query = URLEncoder.encode(query);
-				query = String.format("%s)", query);
-			}
-
-			url = String.format("%s://%s:%s/%s/%s?query=%s&pageSize=%s&currentPageIndex=%s&queryParams=%s", protocol,
-					host, port, path, CONTENT_QUERY, query, limit, start, lastSeedVersion);
-
-		}
+		String q = createQuery(lastSeedVersion, domains, documentsType);
+		if (lastSeedVersion == null || lastSeedVersion.isEmpty())
+			url = String.format("%s://%s:%s/%s/%s?%s&pageSize=%s&currentPageIndex=%s", protocol, host,
+					port, path, CONTENT_QUERY, q, limit, start);
+		else
+			url = String.format("%s://%s:%s/%s/%s?%s&pageSize=%s&currentPageIndex=%s&queryParams=%s", protocol, host,
+					port, path, CONTENT_QUERY, q, limit, start, lastSeedVersion);
 
 		url = sanitizedUrl(url);
 
 		return (NuxeoResponse<Document>) getNuxeoResource(url, Document.builder());
+	}
+
+	public String createQuery(String lastSeedVersion, List<String> domains, List<String> documentsType) {
+		String query = "SELECT * FROM Document";
+
+		if (!domains.isEmpty() || !documentsType.isEmpty() || (lastSeedVersion != null && !lastSeedVersion.isEmpty())) {
+			query += " WHERE ";
+
+			if (lastSeedVersion != null && !lastSeedVersion.isEmpty()) {
+				query += "dc:modified > ?";
+			}
+
+			if (!domains.isEmpty()) {
+				Iterator<String> itdom = domains.iterator();
+
+				if (lastSeedVersion != null && !lastSeedVersion.isEmpty())
+					query = String.format("%s %s", query, " AND ");
+
+				query = String.format("%s ( ecm:path STARTSWITH '/%s'", query, itdom.next());
+
+				while (itdom.hasNext()) {
+					query = String.format("%s OR ecm:path STARTSWITH '/%s'", query, itdom.next());
+				}
+
+				query = String.format("%s)", query);
+			}
+			
+			if (!documentsType.isEmpty()) {
+				Iterator<String> itDocTy = documentsType.iterator();
+
+				if ((lastSeedVersion != null && !lastSeedVersion.isEmpty()) || !domains.isEmpty())
+					query = String.format("%s %s", query, " AND ");
+				query = String.format("%s ( ecm:primaryType = '%s'", query, itDocTy.next());
+
+				while (itDocTy.hasNext()) {
+					query = String.format("%s OR ecm:primaryType = '%s'", query, itDocTy.next());
+				}
+
+				query = String.format("%s)", query);
+			}
+
+		}
+
+		query = URLEncoder.encode(query);
+		query = String.format("%s%s", "query=", query);
+		return query;
 	}
 
 	/**
