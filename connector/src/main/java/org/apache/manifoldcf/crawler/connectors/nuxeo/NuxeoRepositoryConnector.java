@@ -27,12 +27,15 @@ import org.apache.manifoldcf.crawler.connectors.BaseRepositoryConnector;
 import org.apache.manifoldcf.crawler.connectors.nuxeo.client.NuxeoClient;
 import org.apache.manifoldcf.crawler.connectors.nuxeo.model.Ace;
 import org.apache.manifoldcf.crawler.connectors.nuxeo.model.Acl;
+import org.apache.manifoldcf.crawler.connectors.nuxeo.model.Attachment;
 import org.apache.manifoldcf.crawler.connectors.nuxeo.model.Document;
 import org.apache.manifoldcf.crawler.connectors.nuxeo.model.NuxeoResponse;
 import org.apache.manifoldcf.crawler.interfaces.IExistingVersions;
 import org.apache.manifoldcf.crawler.interfaces.IProcessActivity;
 import org.apache.manifoldcf.crawler.interfaces.IRepositoryConnector;
 import org.apache.manifoldcf.crawler.interfaces.ISeedingActivity;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -102,8 +105,7 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 	protected long lastSessionFetch = -1L;
 	protected static final long timeToRelease = 300000L;
 
-	// private Logger logger =
-	// LoggerFactory.getLogger(NuxeoRepositoryConnector.class);
+	private Logger logger = LoggerFactory.getLogger(NuxeoRepositoryConnector.class);
 
 	/* Nuxeo instance parameters */
 	protected String protocol = null;
@@ -271,6 +273,7 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 		try {
 			initNuxeoClient();
 		} catch (ManifoldCFException manifoldCFException) {
+			logger.debug("Not possible to initialize Nuxeo client. Reason: {}", manifoldCFException.getMessage());
 			manifoldCFException.printStackTrace();
 		}
 	}
@@ -410,8 +413,6 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 			String version = statuses.getIndexedVersionString(documentId);
 
 			long startTime = System.currentTimeMillis();
-			String errorCode = "OK";
-			String errorDesc = StringUtils.EMPTY;
 			ProcessResult pResult = null;
 			boolean doLog = true;
 
@@ -430,13 +431,9 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 						-1L, 3, true);
 			} finally {
 				if (doLog)
-					if (pResult.errorCode != null && !pResult.errorCode.isEmpty()) {
+					if (pResult.errorCode != null && !pResult.errorCode.isEmpty())
 						activities.recordActivity(new Long(startTime), ACTIVITY_READ, pResult.fileSize, documentId,
 								pResult.errorCode, pResult.errorDecription, null);
-					} else {
-						activities.recordActivity(new Long(startTime), ACTIVITY_READ, pResult.fileSize, documentId,
-								errorCode, errorDesc, null);
-					}
 			}
 
 		}
@@ -493,6 +490,11 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 			return new ProcessResult(doc.getLenght(), "RETAINED", "");
 		}
 
+		if (doc.getUid() == null) {
+			activities.deleteDocument(manifoldDocumentIdentifier);
+			return new ProcessResult(doc.getLenght(), "DELETED", "");
+		}
+
 		// Add respository document information
 		rd.setMimeType(doc.getMediatype());
 		if (lastModified != null)
@@ -518,14 +520,40 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 		String documentUri = nuxeoClient.getPathDocument(doc.getUid());
 
 		// Set repository ACLs
-		rd.setSecurityACL(RepositoryDocument.SECURITY_TYPE_DOCUMENT, getPermissionDocument(doc));
+		String[] permissions = getPermissionDocument(doc);
+		rd.setSecurityACL(RepositoryDocument.SECURITY_TYPE_DOCUMENT, permissions);
 		rd.setSecurityDenyACL(RepositoryDocument.SECURITY_TYPE_DOCUMENT, new String[] { GLOBAL_DENY_TOKEN });
 		rd.setBinary(doc.getContentStream(), doc.getLenght());
 
 		// Action
 		activities.ingestDocumentWithException(manifoldDocumentIdentifier, lastVersion, documentUri, rd);
 
-		return new ProcessResult(doc.getLenght(), null, null);
+		if (ns.isProcessAttachments())
+			for (Attachment att : doc.getAttachments()) {
+				RepositoryDocument att_rd = new RepositoryDocument();
+				String attDocumentUri = nuxeoClient.getPathDocument(doc.getUid()) + "_" + att.getName();
+
+				att_rd.setMimeType(att.getMime_type());
+				att_rd.setBinary(doc.getContentStream(), att.getLength());
+
+				if (lastModified != null)
+					att_rd.setModifiedDate(lastModified);
+				att_rd.setIndexingDate(new Date());
+
+				att_rd.addField(Attachment.ATT_KEY_NAME, att.getName());
+				att_rd.addField(Attachment.ATT_KEY_LENGTH, String.valueOf(att.getLength()));
+				att_rd.addField(Attachment.ATT_KEY_URL, att.getUrl());
+
+				// Set repository ACLs
+				att_rd.setSecurityACL(RepositoryDocument.SECURITY_TYPE_DOCUMENT, permissions);
+				att_rd.setSecurityDenyACL(RepositoryDocument.SECURITY_TYPE_DOCUMENT,
+						new String[] { GLOBAL_DENY_TOKEN });
+
+				activities.ingestDocumentWithException(manifoldDocumentIdentifier, attDocumentUri, lastVersion,
+						attDocumentUri, att_rd);
+			}
+
+		return new ProcessResult(doc.getLenght(), "OK", StringUtils.EMPTY);
 	}
 
 	public String[] getPermissionDocument(Document doc) {
@@ -587,6 +615,8 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 		paramMap.put(NuxeoConfiguration.Specification.DOMAINS.toUpperCase(), ns.getDomains());
 		paramMap.put(NuxeoConfiguration.Specification.DOCUMENTS_TYPE.toUpperCase(), ns.documentsType);
 		paramMap.put(NuxeoConfiguration.Specification.PROCESS_TAGS.toUpperCase(), ns.isProcessTags().toString());
+		paramMap.put(NuxeoConfiguration.Specification.PROCESS_ATTACHMENTS.toUpperCase(),
+				ns.isProcessAttachments().toString());
 
 		Messages.outputResourceWithVelocity(out, locale, VIEW_SPEC_FORWARD, paramMap);
 	}
@@ -692,12 +722,17 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 		ds.addChild(ds.getChildCount(), documents);
 
 		String processTags = variableContext.getParameter(seqPrefix + NuxeoConfiguration.Specification.PROCESS_TAGS);
+		String processAttachments = variableContext
+				.getParameter(seqPrefix + NuxeoConfiguration.Specification.PROCESS_ATTACHMENTS);
 
 		if (processTags != null && !processTags.isEmpty()) {
 			documents.setAttribute(NuxeoConfiguration.Specification.PROCESS_TAGS, String.valueOf(processTags));
 		}
+		if (processAttachments != null && !processAttachments.isEmpty()) {
+			documents.setAttribute(NuxeoConfiguration.Specification.PROCESS_ATTACHMENTS,
+					String.valueOf(processAttachments));
+		}
 
-		// TODO Specifications
 		return null;
 	}
 
@@ -716,6 +751,7 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 		paramMap.put(NuxeoConfiguration.Specification.DOMAINS.toUpperCase(), ns.getDomains());
 		paramMap.put(NuxeoConfiguration.Specification.DOCUMENTS_TYPE.toUpperCase(), ns.getDocumentsType());
 		paramMap.put(NuxeoConfiguration.Specification.PROCESS_TAGS.toUpperCase(), ns.isProcessTags());
+		paramMap.put(NuxeoConfiguration.Specification.PROCESS_ATTACHMENTS.toUpperCase(), ns.isProcessAttachments());
 
 		Messages.outputResourceWithVelocity(out, locale, EDIT_SPEC_FORWARD_CONF_DOMAINS, paramMap);
 		Messages.outputResourceWithVelocity(out, locale, EDIT_SPEC_FORWARD_CONF_DOCUMENTS_TYPE, paramMap);
@@ -742,6 +778,7 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 		private List<String> domains;
 		private List<String> documentsType;
 		private Boolean processTags = false;
+		private Boolean processAttahcments = false;
 
 		public List<String> getDomains() {
 			return this.domains;
@@ -753,6 +790,10 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 
 		public Boolean isProcessTags() {
 			return this.processTags;
+		}
+
+		public Boolean isProcessAttachments() {
+			return this.processAttahcments;
 		}
 
 		/**
@@ -784,10 +825,10 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 						}
 					}
 				} else if (sn.getType().equals(NuxeoConfiguration.Specification.DOCUMENTS)) {
-					String s = sn.getAttributeValue(NuxeoConfiguration.Specification.PROCESS_TAGS);
-					ns.processTags = Boolean.valueOf(s);
-				} else {
-					// TODO specifications
+					String procTags = sn.getAttributeValue(NuxeoConfiguration.Specification.PROCESS_TAGS);
+					ns.processTags = Boolean.valueOf(procTags);
+					String procAtt = sn.getAttributeValue(NuxeoConfiguration.Specification.PROCESS_ATTACHMENTS);
+					ns.processAttahcments = Boolean.valueOf(procAtt);
 				}
 			}
 

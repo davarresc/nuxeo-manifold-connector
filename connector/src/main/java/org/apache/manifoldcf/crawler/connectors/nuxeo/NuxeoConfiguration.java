@@ -27,6 +27,7 @@ public class NuxeoConfiguration {
 		public static final String DOMAIN_KEY = "key";
 		public static final String DOCUMENTS = "documents";
 		public static final String PROCESS_TAGS = "process_tags";
+		public static final String PROCESS_ATTACHMENTS = "process_attachments";
 		public static final String DOCUMENTS_TYPE = "documentsType";
 		public static final String DOCUMENT_TYPE = "documentType";
 		public static final String DOCUMENT_TYPE_KEY = "key";

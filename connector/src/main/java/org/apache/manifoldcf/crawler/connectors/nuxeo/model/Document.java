@@ -30,6 +30,7 @@ public class Document extends NuxeoResource {
 	protected static final String KEY_IS_CHECKED_OUT = "isCheckedOut";
 	protected static final String KEY_PARENT_REF = "parentRef";
 	protected static final String KEY_REPOSITORY = "repository";
+	protected static final String KEY_ATTACHMENTS = "atachments";
 
 	protected static final String KEY_PROPERTIES = "properties";
 
@@ -54,6 +55,11 @@ public class Document extends NuxeoResource {
 	protected static final String NOTE_SAVE_PREFFIX = "note__";
 	protected static final String KEY_NOTE_NOTE = "note";
 	protected static final String KEY_NOTE_MYMETYPE = "mime_type";
+
+	protected static final String ATT_PREFFIX = "files:";
+	protected static final String ATT_MAIN_PREFFIX = "file:";
+	protected static final String ATT_CONTENT = "content";
+	protected static final String ATT_FILES = "files";
 
 	protected static final String DOCUMENT_SIZE = "size";
 
@@ -89,6 +95,8 @@ public class Document extends NuxeoResource {
 
 	protected String note;
 	protected String noteMimeType;
+
+	protected List<Attachment> attachments = new ArrayList<>();
 
 	@SuppressWarnings("unused")
 	private JSONObject delegated;
@@ -214,6 +222,10 @@ public class Document extends NuxeoResource {
 		return noteMimeType;
 	}
 
+	public List<Attachment> getAttachments() {
+		return attachments;
+	}
+
 	public boolean hasContent() {
 		return this.length > 0 && this.content != null;
 	}
@@ -322,23 +334,57 @@ public class Document extends NuxeoResource {
 
 					JSONArray subjectsArray = properties.optJSONArray(DC_PREFFIX + KEY_DC_SUBJECTS);
 
-					for (int i = 0; i < subjectsArray.length(); i++) {
-						if (subjectsArray.optString(i) != null)
-							document.subjects.add(subjectsArray.getString(i));
-					}
+					if (subjectsArray != null)
+						for (int i = 0; i < subjectsArray.length(); i++) {
+							if (subjectsArray.optString(i) != null)
+								document.subjects.add(subjectsArray.getString(i));
+						}
 
 					JSONArray contributorsArray = properties.optJSONArray(DC_PREFFIX + KEY_DC_CONTRIBUTORS);
 
-					for (int i = 0; i < contributorsArray.length(); i++) {
-						if (contributorsArray.optString(i) != null)
-							document.contributors.add(contributorsArray.getString(i));
-					}
+					if (contributorsArray != null)
+						for (int i = 0; i < contributorsArray.length(); i++) {
+							if (contributorsArray.optString(i) != null)
+								document.contributors.add(contributorsArray.getString(i));
+						}
 
 					if (document.type.equalsIgnoreCase(DocumentType.NOTE.value())) {
 						document.note = properties.optString(NOTE_PREFFIX + KEY_NOTE_NOTE);
 						document.noteMimeType = properties.optString(NOTE_PREFFIX + KEY_NOTE_MYMETYPE);
 					}
 
+					JSONObject mainFile = properties.optJSONObject(ATT_MAIN_PREFFIX + ATT_CONTENT);
+
+					if (mainFile != null) {
+						Attachment att = new Attachment();
+
+						att.name = mainFile.optString(Attachment.ATT_KEY_NAME);
+						att.mime_type = mainFile.optString(Attachment.ATT_KEY_MIME_TYPE);
+						att.url = mainFile.optString(Attachment.ATT_KEY_URL);
+						att.length = mainFile.optLong(Attachment.ATT_KEY_LENGTH);
+
+						document.attachments.add(att);
+					}
+
+					JSONArray files = properties.optJSONArray(ATT_PREFFIX + ATT_FILES);
+
+					if (files != null)
+						for (int i = 0; i < files.length(); i++) {
+							if (files.optJSONObject(i) != null) {
+								Attachment att = new Attachment();
+
+								JSONObject fileObj = files.optJSONObject(i);
+								JSONObject file = fileObj.getJSONObject(Attachment.ATT_KEY_FILE);
+
+								att.name = file.optString(Attachment.ATT_KEY_NAME);
+								att.mime_type = file.optString(Attachment.ATT_KEY_MIME_TYPE);
+								att.url = file.optString(Attachment.ATT_KEY_URL);
+								att.length = file.optLong(Attachment.ATT_KEY_LENGTH);
+
+								document.attachments.add(att);
+							}
+
+						}
 				}
 
 				document.delegated = jsonDocument;
