@@ -43,6 +43,8 @@ import org.apache.manifoldcf.crawler.connectors.nuxeo.model.builder.NuxeoResourc
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author David Arroyo Escobar <arroyoescobardavid@gmail.com>
@@ -55,7 +57,7 @@ public class NuxeoClient {
 	public static final String CONTENT_AUTHORITY = CONTENT_PATH + "user";
 	public static final String CONTENT_TAG = CONTENT_PATH + "";
 
-	// private Logger logger = LoggerFactory.getLogger(NuxeoClient.class);
+	private Logger logger = LoggerFactory.getLogger(NuxeoClient.class);
 
 	private String protocol;
 	private Integer port;
@@ -196,8 +198,8 @@ public class NuxeoClient {
 
 		String q = createQuery(lastSeedVersion, domains, documentsType);
 		if (lastSeedVersion == null || lastSeedVersion.isEmpty())
-			url = String.format("%s://%s:%s/%s/%s?%s&pageSize=%s&currentPageIndex=%s", protocol, host,
-					port, path, CONTENT_QUERY, q, limit, start);
+			url = String.format("%s://%s:%s/%s/%s?%s&pageSize=%s&currentPageIndex=%s", protocol, host, port, path,
+					CONTENT_QUERY, q, limit, start);
 		else
 			url = String.format("%s://%s:%s/%s/%s?%s&pageSize=%s&currentPageIndex=%s&queryParams=%s", protocol, host,
 					port, path, CONTENT_QUERY, q, limit, start, lastSeedVersion);
@@ -231,7 +233,7 @@ public class NuxeoClient {
 
 				query = String.format("%s)", query);
 			}
-			
+
 			if (!documentsType.isEmpty()) {
 				Iterator<String> itDocTy = documentsType.iterator();
 
@@ -332,6 +334,7 @@ public class NuxeoClient {
 
 			return mDocument;
 		} catch (Exception e) {
+			logger.debug("Failed documentId:" + documentId,e);
 		}
 
 		return new Document();
