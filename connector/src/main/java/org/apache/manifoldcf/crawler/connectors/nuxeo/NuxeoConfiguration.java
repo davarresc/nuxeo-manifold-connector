@@ -1,5 +1,14 @@
 package org.apache.manifoldcf.crawler.connectors.nuxeo;
 
+/**
+ * 
+ * NuxeoConfiguration class
+ * 
+ * Class to keep the server configuration and specification paramenters.
+ * 
+ * @author David Arroyo Escobar <arroyoescobardavid@gmail.com>
+ *
+ */
 public class NuxeoConfiguration {
 
 	public static interface Server {

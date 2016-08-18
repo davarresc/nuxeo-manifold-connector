@@ -29,6 +29,7 @@ import org.apache.http.impl.client.HttpClients;
 import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.apache.http.protocol.HttpRequestExecutor;
 import org.apache.http.util.EntityUtils;
+import org.apache.manifoldcf.agents.interfaces.ServiceInterruption;
 import org.apache.manifoldcf.connectorcommon.common.InterruptibleSocketFactory;
 import org.apache.manifoldcf.connectorcommon.interfaces.KeystoreManagerFactory;
 import org.apache.manifoldcf.core.interfaces.ManifoldCFException;
@@ -118,7 +119,7 @@ public class NuxeoClient {
 			if (httpClient == null)
 				connect();
 
-			String url = String.format("%s://%s:%s/%s/%s?pageSize=1", protocol, host, port, path, CONTENT_QUERY);
+			String url = String.format("%s://%s:%s%s/%s?pageSize=1", protocol, host, port, path, CONTENT_QUERY);
 
 			HttpGet httpGet = createGetRequest(url);
 			response = httpClient.execute(httpGet);
@@ -316,8 +317,9 @@ public class NuxeoClient {
 	/**
 	 * @param documentId
 	 * @return
+	 * @throws ServiceInterruption 
 	 */
-	public Document getDocument(String documentId) {
+	public Document getDocument(String documentId) throws ServiceInterruption {
 
 		String url = getPathDocument(documentId);
 
@@ -335,9 +337,11 @@ public class NuxeoClient {
 			return mDocument;
 		} catch (Exception e) {
 			logger.debug("Failed documentId:" + documentId,e);
+			long interruptionRetryTime = 5L * 60L * 1000L;
+			String message = "Server appears down during seeding: " + e.getMessage();
+			throw new ServiceInterruption(message, e, System.currentTimeMillis() + interruptionRetryTime,
+					-1L, 3, true);
 		}
-
-		return new Document();
 	}
 
 	public Acl getAcl(String documentId) {
@@ -363,7 +367,7 @@ public class NuxeoClient {
 	}
 
 	public String getPathDocument(String documentId) {
-		return String.format("%s://%s:%s/%s/%s/%s", protocol, host, port, path, CONTENT_UUID, documentId);
+		return String.format("%s://%s:%s%s/%s/%s", protocol, host, port, path, CONTENT_UUID, documentId);
 	}
 
 	/**

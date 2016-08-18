@@ -19,6 +19,13 @@ import org.apache.manifoldcf.core.interfaces.ManifoldCFException;
 import org.apache.manifoldcf.crawler.connectors.nuxeo.NuxeoConfiguration;
 import org.apache.manifoldcf.crawler.connectors.nuxeo.client.NuxeoClient;
 
+/**
+ *
+ * Nuxeo Authority Connector class
+ * 
+ * @author David Arroyo Escobar <arroyoescobardavid@gmail.com>
+ *
+ */
 public class NuxeoAuthorityConnector extends BaseAuthorityConnector {
 
 	// Configuration tabs
@@ -53,6 +60,7 @@ public class NuxeoAuthorityConnector extends BaseAuthorityConnector {
 
 	protected NuxeoClient nuxeoClient = null;
 
+	//Constructor
 	public NuxeoAuthorityConnector() {
 		super();
 	}
@@ -75,6 +83,8 @@ public class NuxeoAuthorityConnector extends BaseAuthorityConnector {
 	}
 
 	/** CONNECTION **/
+	
+	//Makes connection to server
 	@Override
 	public void connect(ConfigParams configParams) {
 		super.connect(configParams);
@@ -93,6 +103,9 @@ public class NuxeoAuthorityConnector extends BaseAuthorityConnector {
 		}
 	}
 
+	/**
+	 * Check the connection
+	 */
 	@Override
 	public String check() throws ManifoldCFException {
 		try {
@@ -116,6 +129,11 @@ public class NuxeoAuthorityConnector extends BaseAuthorityConnector {
 		}
 	}
 
+	/**
+	 * Initialize Nuxeo client using the configured parameters.
+	 * 
+	 * @throws ManifoldCFException
+	 */
 	private void initNuxeoClient() throws ManifoldCFException {
 		int portInt;
 
@@ -149,6 +167,9 @@ public class NuxeoAuthorityConnector extends BaseAuthorityConnector {
 		}
 	}
 
+	/**
+	 * @return true if the connector instance is connected.
+	 */
 	@Override
 	public boolean isConnected() {
 		return nuxeoClient != null;
@@ -261,7 +282,7 @@ public class NuxeoAuthorityConnector extends BaseAuthorityConnector {
 			parameters.setObfuscatedParameter(NuxeoConfiguration.Server.PASSWORD,
 					variableContext.mapKeyToPassword(nuxeoPassword));
 
-		return null;
+		return null; // It returns null if the configuration has been successful
 	}
 
 	/** AUTHORITY **/

@@ -40,13 +40,16 @@ import org.slf4j.LoggerFactory;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 
+/**
+ * 
+ * Nuxeo Repository Connector class
+ * 
+ * @author David Arroyo Escobar <arroyoescobardavid@gmail.com>
+ *
+ */
 public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 
 	protected final static String ACTIVITY_READ = "read document";
-
-	/** Deny access token for default authority */
-	// private final static String defaultAuthorityDenyToken =
-	// GLOBAL_DENY_TOKEN;
 
 	// Configuration tabs
 	private static final String NUXEO_SERVER_TAB_PROPERTY = "NuxeoRepositoryConnector.Server";
@@ -117,6 +120,7 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 
 	protected NuxeoClient nuxeoClient = null;
 
+	//Constructor
 	public NuxeoRepositoryConnector() {
 		super();
 	}
@@ -133,18 +137,6 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 	@Override
 	public String[] getBinNames(String documentIdenfitier) {
 		return new String[] { host };
-	}
-
-	public void disconenct() throws ManifoldCFException {
-		if (nuxeoClient != null)
-			nuxeoClient = null;
-
-		protocol = null;
-		host = null;
-		port = null;
-		path = null;
-		username = null;
-		password = null;
 	}
 
 	/** CONFIGURATION CONNECTOR **/
@@ -278,6 +270,7 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 		}
 	}
 
+	//Check the connection
 	@Override
 	public String check() throws ManifoldCFException {
 		try {
@@ -301,6 +294,11 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 		}
 	}
 
+	/**
+	 * Initialize Nuxeo client using the configured parameters.
+	 * 
+	 * @throws ManifoldCFException
+	 */
 	private void initNuxeoClient() throws ManifoldCFException {
 		int portInt;
 
