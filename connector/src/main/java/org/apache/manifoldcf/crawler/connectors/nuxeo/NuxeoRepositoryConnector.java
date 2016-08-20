@@ -120,7 +120,7 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 
 	protected NuxeoClient nuxeoClient = null;
 
-	//Constructor
+	// Constructor
 	public NuxeoRepositoryConnector() {
 		super();
 	}
@@ -270,7 +270,7 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 		}
 	}
 
-	//Check the connection
+	// Check the connection
 	@Override
 	public String check() throws ManifoldCFException {
 		try {
@@ -429,7 +429,7 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 						-1L, 3, true);
 			} finally {
 				if (doLog)
-					if (pResult.errorCode != null && !pResult.errorCode.isEmpty())
+					if (pResult != null && pResult.errorCode != null && !pResult.errorCode.isEmpty())
 						activities.recordActivity(new Long(startTime), ACTIVITY_READ, pResult.fileSize, documentId,
 								pResult.errorCode, pResult.errorDecription, null);
 			}

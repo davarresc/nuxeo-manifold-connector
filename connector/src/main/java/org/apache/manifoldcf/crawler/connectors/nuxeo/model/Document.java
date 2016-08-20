@@ -311,8 +311,7 @@ public class Document extends NuxeoResource {
 				document.repository = repository;
 				document.parentRef = parentRef;
 
-				if (document.content != null)
-					document.length = document.content.getBytes().length;
+				document.length = (document.content != null) ? document.content.getBytes().length : 0;
 
 				JSONObject properties = (JSONObject) jsonDocument.opt(KEY_PROPERTIES);
 
