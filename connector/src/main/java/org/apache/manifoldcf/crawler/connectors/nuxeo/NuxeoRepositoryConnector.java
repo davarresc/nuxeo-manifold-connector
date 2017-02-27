@@ -3,7 +3,6 @@ package org.apache.manifoldcf.crawler.connectors.nuxeo;
 import java.io.IOException;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -24,16 +23,15 @@ import org.apache.manifoldcf.core.interfaces.ManifoldCFException;
 import org.apache.manifoldcf.core.interfaces.Specification;
 import org.apache.manifoldcf.core.interfaces.SpecificationNode;
 import org.apache.manifoldcf.crawler.connectors.BaseRepositoryConnector;
-import org.apache.manifoldcf.crawler.connectors.nuxeo.client.NuxeoClient;
-import org.apache.manifoldcf.crawler.connectors.nuxeo.model.Ace;
-import org.apache.manifoldcf.crawler.connectors.nuxeo.model.Acl;
 import org.apache.manifoldcf.crawler.connectors.nuxeo.model.Attachment;
-import org.apache.manifoldcf.crawler.connectors.nuxeo.model.Document;
-import org.apache.manifoldcf.crawler.connectors.nuxeo.model.NuxeoResponse;
+import org.apache.manifoldcf.crawler.connectors.nuxeo.model.DocumentManifold;
 import org.apache.manifoldcf.crawler.interfaces.IExistingVersions;
 import org.apache.manifoldcf.crawler.interfaces.IProcessActivity;
 import org.apache.manifoldcf.crawler.interfaces.IRepositoryConnector;
 import org.apache.manifoldcf.crawler.interfaces.ISeedingActivity;
+import org.nuxeo.client.api.NuxeoClient;
+import org.nuxeo.client.api.objects.Document;
+import org.nuxeo.client.api.objects.Documents;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -278,15 +276,18 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 				initNuxeoClient();
 			}
 
-			Boolean result = nuxeoClient.check();
+			Boolean result = true;
+			try {
+				nuxeoClient.repository().getDocumentRoot();
+			} catch (Exception ex) {
+				result = false;
+			}
 
 			if (result)
 				return super.check();
 			else
 				throw new ManifoldCFException("Nuxeo instance could not be reached");
 
-		} catch (ServiceInterruption serviceInterruption) {
-			return "Connection temporarily failed: " + serviceInterruption.getMessage();
 		} catch (ManifoldCFException manifoldCFException) {
 			return "Connection failed: " + manifoldCFException.getMessage();
 		} catch (Exception e) {
@@ -300,8 +301,6 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 	 * @throws ManifoldCFException
 	 */
 	private void initNuxeoClient() throws ManifoldCFException {
-		int portInt;
-
 		if (nuxeoClient == null) {
 
 			if (StringUtils.isEmpty(protocol)) {
@@ -313,26 +312,39 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 				throw new ManifoldCFException("Parameter " + NuxeoConfiguration.Server.HOST + " required but not set");
 			}
 
-			if (port != null && port.length() > 0) {
-				try {
-					portInt = Integer.parseInt(port);
-				} catch (NumberFormatException formatException) {
-					throw new ManifoldCFException("Bad number: " + formatException.getMessage(), formatException);
-				}
-			} else {
-				if (protocol.toLowerCase(Locale.ROOT).equals("http")) {
-					portInt = 80;
-				} else {
-					portInt = 443;
-				}
-			}
-
-			nuxeoClient = new NuxeoClient(protocol, host, portInt, path, username, password);
+			String url = getUrl();
+			nuxeoClient = new NuxeoClient(url, username, password);
 
 			lastSessionFetch = System.currentTimeMillis();
 
 		}
 
+	}
+
+	/**
+	 * Formatter URL
+	 * 
+	 * @throws ManifoldCFException
+	 */
+	public String getUrl() throws ManifoldCFException {
+		int portInt;
+		if (port != null && port.length() > 0) {
+			try {
+				portInt = Integer.parseInt(port);
+			} catch (NumberFormatException formatException) {
+				throw new ManifoldCFException("Bad number: " + formatException.getMessage(), formatException);
+			}
+		} else {
+			if (protocol.toLowerCase(Locale.ROOT).equals("http")) {
+				portInt = 80;
+			} else {
+				portInt = 443;
+			}
+		}
+
+		String url = protocol + "://" + host + ":" + portInt + "/" + path;
+
+		return url;
 	}
 
 	@Override
@@ -349,7 +361,7 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 		long currentTime = System.currentTimeMillis();
 
 		if (currentTime > lastSessionFetch + timeToRelease) {
-			nuxeoClient.close();
+			nuxeoClient.shutdown();
 			nuxeoClient = null;
 			lastSessionFetch = -1;
 		}
@@ -373,17 +385,18 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 			List<String> documentsType = ns.getDocumentsType();
 
 			do {
-				final NuxeoResponse<Document> response = nuxeoClient.getDocuments(domains, documentsType,
-						lastSeedVersion, lastStart, defaultSize, isLast);
 
-				for (Document doc : response.getResults()) {
+				Documents docs = DocumentManifold.getDocsByDate(nuxeoClient, lastSeedVersion, domains, documentsType,
+						defaultSize, lastStart);
+
+				for (Document doc : docs.getDocuments()) {
 					activities.addSeedDocument(doc.getUid());
 				}
 
 				lastStart++;
-				isLast = response.isLast();
+				isLast = docs.getIsNextPageAvailable();
 
-			} while (!isLast);
+			} while (isLast);
 
 			SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'");
 			sdf.setTimeZone(TimeZone.getTimeZone("GMT"));
@@ -400,6 +413,7 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 	}
 
 	/** PROCESS DOCUMENTS **/
+
 	@Override
 	public void processDocuments(String[] documentsIdentifieres, IExistingVersions statuses, Specification spec,
 			IProcessActivity activities, int jobMode, boolean usesDefaultAuthority)
@@ -445,11 +459,12 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 	 * @param newHashMap
 	 * @return
 	 */
+
 	private ProcessResult processDocument(String documentId, Specification spec, String version,
 			IProcessActivity activities, boolean doLog, HashMap<String, String> extraProperties)
 			throws ManifoldCFException, ServiceInterruption, IOException {
 
-		Document doc = nuxeoClient.getDocument(documentId);
+		DocumentManifold doc = new DocumentManifold(nuxeoClient.repository().fetchDocumentById(documentId));
 
 		return processDocumentInternal(doc, documentId, spec, version, activities, doLog, extraProperties);
 	}
@@ -463,44 +478,49 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 	 * @param extraProperties
 	 * @return
 	 */
-	private ProcessResult processDocumentInternal(Document doc, String manifoldDocumentIdentifier, Specification spec,
-			String version, IProcessActivity activities, boolean doLog, HashMap<String, String> extraProperties)
-			throws ManifoldCFException, ServiceInterruption, IOException {
+
+	private ProcessResult processDocumentInternal(DocumentManifold doc, String manifoldDocumentIdentifier,
+			Specification spec, String version, IProcessActivity activities, boolean doLog,
+			HashMap<String, String> extraProperties) throws ManifoldCFException, ServiceInterruption, IOException {
 
 		RepositoryDocument rd = new RepositoryDocument();
 		NuxeoSpecification ns = NuxeoSpecification.from(spec);
 
-		Date lastModified = doc.getLastModified();
+		String lastModified = doc.getDocument().getLastModified();
+		Date lastModifiedDate = null;
 
-		DateFormat df = DateFormat.getDateTimeInstance();
-
-		String lastVersion = null;
-
-		if (lastModified != null)
-			lastVersion = df.format(lastModified);
-
-		if (doc.getState() != null && doc.getState().equalsIgnoreCase(Document.DELETED)) {
-			activities.deleteDocument(manifoldDocumentIdentifier);
-			return new ProcessResult(doc.getLenght(), "DELETED", "");
+		if (lastModified != null) {
+			DateFormat formatter = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX");
+			try {
+				lastModifiedDate = formatter.parse(lastModified);
+			} catch (Exception ex) {
+				lastModifiedDate = new Date(0);
+			}
 		}
 
-		if (!activities.checkDocumentNeedsReindexing(manifoldDocumentIdentifier, lastVersion)) {
-			return new ProcessResult(doc.getLenght(), "RETAINED", "");
+		int lenght = doc.getLenght();
+		if (doc.getDocument().getState() != null
+				&& doc.getDocument().getState().equalsIgnoreCase(DocumentManifold.DELETED)) {
+			activities.deleteDocument(manifoldDocumentIdentifier);
+			return new ProcessResult(lenght, "DELETED", "");
 		}
 
-		if (doc.getUid() == null) {
+		if (!activities.checkDocumentNeedsReindexing(manifoldDocumentIdentifier, lastModified)) {
+			return new ProcessResult(lenght, "RETAINED", "");
+		}
+
+		if (doc.getDocument().getUid() == null) {
 			activities.deleteDocument(manifoldDocumentIdentifier);
-			return new ProcessResult(doc.getLenght(), "DELETED", "");
+			return new ProcessResult(lenght, "DELETED", "");
 		}
 
 		// Add respository document information
-		rd.setMimeType(doc.getMediatype());
-		if (lastModified != null)
-			rd.setModifiedDate(lastModified);
+		rd.setMimeType(doc.getMimeType());
+		rd.setModifiedDate(lastModifiedDate);
 		rd.setIndexingDate(new Date());
 
-		// Adding Document Metadata
-		Map<String, Object> docMetadata = doc.getMetadataAsMap();
+		// Adding Document metadata
+		Map<String, Object> docMetadata = doc.getMetadata();
 
 		for (Entry<String, Object> entry : docMetadata.entrySet()) {
 			if (entry.getValue() instanceof List) {
@@ -509,76 +529,56 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 			} else {
 				rd.addField(entry.getKey(), entry.getValue().toString());
 			}
-
 		}
 
 		if (ns.isProcessTags())
-			rd.addField("Tags", getTagsFromDocument(doc));
+			rd.addField("Tags", doc.getTags(nuxeoClient));
 
-		String documentUri = nuxeoClient.getPathDocument(doc.getUid());
+		String documentUri = null;
+		try {
+			documentUri = getUrl() + "/nxpath/" + doc.getDocument().getRepositoryName() + doc.getDocument().getPath()
+					+ "@view_documents";
+		} catch (Exception ex) {
+			documentUri = doc.getDocument().getUid();
+		}
 
 		// Set repository ACLs
-		String[] permissions = getPermissionDocument(doc);
+		String[] permissions = doc.getPermissions(nuxeoClient);
 		rd.setSecurityACL(RepositoryDocument.SECURITY_TYPE_DOCUMENT, permissions);
 		rd.setSecurityDenyACL(RepositoryDocument.SECURITY_TYPE_DOCUMENT, new String[] { GLOBAL_DENY_TOKEN });
-		rd.setBinary(doc.getContentStream(), doc.getLenght());
+		rd.setBinary(doc.getContent(), lenght);
 
 		// Action
-		activities.ingestDocumentWithException(manifoldDocumentIdentifier, lastVersion, documentUri, rd);
+		activities.ingestDocumentWithException(manifoldDocumentIdentifier, lastModified, documentUri, rd);
 
-		if (ns.isProcessAttachments())
-			for (Attachment att : doc.getAttachments()) {
+		if (ns.isProcessAttachments()) {
+			for (Attachment att : doc.getAttachments(nuxeoClient)) {
 				RepositoryDocument att_rd = new RepositoryDocument();
-				String attDocumentUri = nuxeoClient.getPathDocument(doc.getUid()) + "_" + att.getName();
+				String attDocumentUri = att.getUrl();
 
 				att_rd.setMimeType(att.getMime_type());
-				att_rd.setBinary(doc.getContentStream(), att.getLength());
+				att_rd.setBinary(att.getData(), att.getLength());
 
 				if (lastModified != null)
-					att_rd.setModifiedDate(lastModified);
+					att_rd.setModifiedDate(lastModifiedDate);
 				att_rd.setIndexingDate(new Date());
 
 				att_rd.addField(Attachment.ATT_KEY_NAME, att.getName());
 				att_rd.addField(Attachment.ATT_KEY_LENGTH, String.valueOf(att.getLength()));
-				att_rd.addField(Attachment.ATT_KEY_URL, att.getUrl());
-
+				att_rd.addField(Attachment.ATT_KEY_DIGEST, att.getDigest());
+				att_rd.addField(Attachment.ATT_KEY_DIGEST_ALGORITHM, att.getDigestAlgorithm());
+				att_rd.addField(Attachment.ATT_KEY_ENCODING, att.getEncoding());
 				// Set repository ACLs
 				att_rd.setSecurityACL(RepositoryDocument.SECURITY_TYPE_DOCUMENT, permissions);
 				att_rd.setSecurityDenyACL(RepositoryDocument.SECURITY_TYPE_DOCUMENT,
 						new String[] { GLOBAL_DENY_TOKEN });
 
-				activities.ingestDocumentWithException(manifoldDocumentIdentifier, attDocumentUri, lastVersion,
+				activities.ingestDocumentWithException(manifoldDocumentIdentifier, attDocumentUri, lastModified,
 						attDocumentUri, att_rd);
 			}
-
-		return new ProcessResult(doc.getLenght(), "OK", StringUtils.EMPTY);
-	}
-
-	public String[] getPermissionDocument(Document doc) {
-
-		List<String> permissions = new ArrayList<String>();
-		try {
-			Acl acl = nuxeoClient.getAcl(doc.getUid());
-
-			for (Ace ace : acl.getAces()) {
-				if (ace.getStatus().equalsIgnoreCase("effective") && ace.isGranted()) {
-					permissions.add(ace.getName());
-				}
-			}
-
-			return permissions.toArray(new String[0]);
-
-		} catch (Exception e) {
-			return new String[] {};
 		}
-	}
 
-	public String[] getTagsFromDocument(Document doc) {
-		try {
-			return nuxeoClient.getTags(doc.getUid());
-		} catch (Exception e) {
-			return new String[] {};
-		}
+		return new ProcessResult(lenght, "OK", StringUtils.EMPTY);
 	}
 
 	private class ProcessResult {
