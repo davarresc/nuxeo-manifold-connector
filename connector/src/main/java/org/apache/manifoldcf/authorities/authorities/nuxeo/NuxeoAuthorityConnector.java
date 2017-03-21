@@ -16,9 +16,9 @@ import org.apache.manifoldcf.core.interfaces.IPostParameters;
 import org.apache.manifoldcf.core.interfaces.IThreadContext;
 import org.apache.manifoldcf.core.interfaces.ManifoldCFException;
 import org.apache.manifoldcf.crawler.connectors.nuxeo.NuxeoConfiguration;
-
 import org.nuxeo.client.api.NuxeoClient;
 import org.nuxeo.client.api.objects.user.User;
+import org.nuxeo.client.internals.spi.NuxeoClientException;
 
 /**
  *
@@ -309,7 +309,7 @@ public class NuxeoAuthorityConnector extends BaseAuthorityConnector {
 	}
 
 	@Override
-	public AuthorizationResponse getAuthorizationResponse(String username) throws ManifoldCFException {
+	public AuthorizationResponse getAuthorizationResponse(String username) {
 		try {
 			List<String> authorities = getGroupsByUser(username);
 			if (authorities == null || authorities.isEmpty()) {
@@ -318,6 +318,8 @@ public class NuxeoAuthorityConnector extends BaseAuthorityConnector {
 				return new AuthorizationResponse(authorities.toArray(new String[0]), AuthorizationResponse.RESPONSE_OK);
 			}
 
+		} catch (NuxeoClientException e) {
+			return RESPONSE_USERNOTFOUND;
 		} catch (Exception e) {
 			return RESPONSE_UNREACHABLE;
 		}
@@ -325,9 +327,13 @@ public class NuxeoAuthorityConnector extends BaseAuthorityConnector {
 
 	public List<String> getGroupsByUser(String username) {
 
+		List<String> authorities = null;
+
 		User user = nuxeoClient.getUserManager().fetchUser(username);
-		List<String> authorities = user.getGroups();
-		authorities.add(user.getUserName());
+		if (user != null) {
+			authorities = user.getGroups();
+			authorities.add(user.getUserName());
+		}
 
 		return authorities;
 	}
