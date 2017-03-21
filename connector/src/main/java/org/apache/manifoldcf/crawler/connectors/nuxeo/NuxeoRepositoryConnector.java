@@ -5,6 +5,7 @@ import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -46,6 +47,8 @@ import com.google.common.collect.Maps;
  *
  */
 public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
+
+	private static final String URI_DOCUMENT = "SELECT * FROM Document";
 
 	protected final static String ACTIVITY_READ = "read document";
 
@@ -386,7 +389,7 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 
 			do {
 
-				Documents docs = DocumentManifold.getDocsByDate(nuxeoClient, lastSeedVersion, domains, documentsType,
+				Documents docs = getDocsByDate(nuxeoClient, lastSeedVersion, domains, documentsType,
 						defaultSize, lastStart);
 
 				for (Document doc : docs.getDocuments()) {
@@ -410,6 +413,60 @@ public class NuxeoRepositoryConnector extends BaseRepositoryConnector {
 			throw new ServiceInterruption(message, exception, System.currentTimeMillis() + interruptionRetryTime, -1L,
 					3, true);
 		}
+	}
+	
+	/**
+	 * 
+	 * @param nuxeoClient
+	 * @param date
+	 * @param domains
+	 * @param documentsType
+	 * @param limit
+	 * @param start
+	 * @return Documents
+	 */
+	public Documents getDocsByDate(NuxeoClient nuxeoClient, String date, List<String> domains,
+			List<String> documentsType, int limit, int start) {
+
+		String query = "";
+
+		if (date == null || date.isEmpty()) {
+			SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX");
+			date = DATE_FORMAT.format(new Date(0));
+		}
+		query = "dc:modified > '" + date + "'";
+
+		if (!domains.isEmpty()) {
+			Iterator<String> itdom = domains.iterator();
+
+			query = String.format(" %s AND ( ecm:path STARTSWITH '/%s'", query, itdom.next());
+
+			while (itdom.hasNext()) {
+				query = String.format("%s OR ecm:path STARTSWITH '/%s'", query, itdom.next());
+			}
+
+			query = String.format("%s )", query);
+		}
+
+		if (!documentsType.isEmpty()) {
+			Iterator<String> itDocTy = documentsType.iterator();
+
+			query = String.format(" %s AND ( ecm:primaryType = '%s'", query, itDocTy.next());
+
+			while (itDocTy.hasNext()) {
+				query = String.format("%s OR ecm:primaryType = '%s'", query, itDocTy.next());
+			}
+
+			query = String.format("%s )", query);
+		}
+
+		query = String.format(URI_DOCUMENT + " where %s ", query);
+
+		nuxeoClient.header("X-NXDocumentProperties", "*");
+		Documents docs = nuxeoClient.repository().query(query, String.valueOf(limit), String.valueOf(start), null, null,
+				null, null);
+
+		return docs;
 	}
 
 	/** PROCESS DOCUMENTS **/
