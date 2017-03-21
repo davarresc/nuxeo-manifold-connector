@@ -6,17 +6,16 @@ package org.apache.manifoldcf.authorities.nuxeo.tests;
 import org.apache.manifoldcf.authorities.authorities.nuxeo.NuxeoAuthorityConnector;
 import org.apache.manifoldcf.authorities.interfaces.AuthorizationResponse;
 import org.apache.manifoldcf.authorities.interfaces.IAuthorityConnector;
-import org.apache.manifoldcf.crawler.connectors.nuxeo.client.NuxeoClient;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import static org.junit.Assert.assertEquals;
-
+import org.nuxeo.client.api.NuxeoClient;
+import org.nuxeo.client.api.objects.user.User;
+import org.nuxeo.client.api.objects.user.UserManager;
 import org.mockito.Mock;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-
-import java.util.ArrayList;
-import java.util.List;
 
 import static org.mockito.Matchers.anyString;
 
@@ -42,14 +41,22 @@ public class NuxeoAuthorityTest {
 
 	@Test
 	public void check() throws Exception {
-		when(client.checkAuth()).thenReturn(true);
+						
+		when(client.getUserManager()).thenReturn(mock(UserManager.class));
+		when(client.getUserManager().fetchUser(anyString())).thenReturn(mock(User.class));
+		
 		assertEquals(authorityConnector.check(), "Connection working");
 	}
 
 	@Test
 	public void checkUserNotFound() throws Exception {
-		when(client.getUserAuthorities(anyString())).thenReturn(new ArrayList<String>());
-		AuthorizationResponse response = authorityConnector.getAuthorizationResponse(anyString());
+		UserManager userManager = mock(UserManager.class);
+		User user = mock(User.class);
+		
+		when(client.getUserManager()).thenReturn(userManager);
+		when(client.getUserManager().fetchUser("")).thenReturn(user);
+		
+		AuthorizationResponse response = authorityConnector.getAuthorizationResponse("NOT_USER_EXIST");
 		String[] tokens = response.getAccessTokens();
 		
 		assertEquals(tokens.length, 1);
@@ -58,15 +65,15 @@ public class NuxeoAuthorityTest {
 	}
 
 	@Test
-	public void checkuserFound() throws Exception {
-		List<String> tokensList = new ArrayList<String>();
-		tokensList.add("token");
-		when(client.getUserAuthorities(anyString())).thenReturn(tokensList);
-		AuthorizationResponse response = authorityConnector.getAuthorizationResponse(anyString());
+	public void checkUserFound() throws Exception {
+		when(client.getUserManager()).thenReturn(mock(UserManager.class));
+		when(client.getUserManager().fetchUser(anyString())).thenReturn(mock(User.class));
+		
+		AuthorizationResponse response = authorityConnector.getAuthorizationResponse("Administrator");
 		
 		String[] tokens = response.getAccessTokens();
+		
 		assertEquals(tokens.length, 1);
-		assertEquals(tokens[0], tokensList.get(0));
 		assertEquals(response.getResponseStatus(), AuthorizationResponse.RESPONSE_OK);
 	}
 }
